@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
-import mockApi from '../services/mockApi';
+import { quizzesAPI } from '../services/api';
 
 const QuizContext = createContext();
 
@@ -18,18 +18,19 @@ export const QuizProvider = ({ children }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    const loadQuiz = async (documentId) => {
+    const loadQuiz = async (quizId) => {
         try {
             setLoading(true);
             setError(null);
-            const quiz = await mockApi.getQuiz(documentId);
-            setCurrentQuiz(quiz);
+            const response = await quizzesAPI.getById(quizId);
+            setCurrentQuiz(response.quiz);
             setAnswers({});
             setResults(null);
-            return quiz;
+            return response.quiz;
         } catch (err) {
-            setError(err.message);
-            throw err;
+            const errorMessage = err.response?.data?.error || 'Failed to load quiz';
+            setError(errorMessage);
+            throw new Error(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -42,38 +43,31 @@ export const QuizProvider = ({ children }) => {
         }));
     };
 
-    const submitQuiz = () => {
+    const submitQuiz = async (timeTaken = 0) => {
         if (!currentQuiz) return null;
 
-        let correct = 0;
-        const questionResults = currentQuiz.questions.map(question => {
-            const userAnswer = answers[question.id];
-            const isCorrect = userAnswer === question.correctAnswer;
-            if (isCorrect) correct++;
+        try {
+            setLoading(true);
+            // Submit to backend for server-side scoring
+            const response = await quizzesAPI.submit(currentQuiz._id, answers, timeTaken);
 
-            return {
-                questionId: question.id,
-                question: question.question,
-                userAnswer,
-                correctAnswer: question.correctAnswer,
-                isCorrect,
-                explanation: question.explanation,
-                options: question.options,
+            const quizResults = {
+                score: response.result.score,
+                correct: response.result.correctCount,
+                total: response.result.totalQuestions,
+                questionResults: response.result.results,
+                completedAt: new Date(),
             };
-        });
 
-        const score = Math.round((correct / currentQuiz.questions.length) * 100);
-
-        const quizResults = {
-            score,
-            correct,
-            total: currentQuiz.questions.length,
-            questionResults,
-            completedAt: new Date(),
-        };
-
-        setResults(quizResults);
-        return quizResults;
+            setResults(quizResults);
+            return quizResults;
+        } catch (err) {
+            const errorMessage = err.response?.data?.error || 'Failed to submit quiz';
+            setError(errorMessage);
+            throw new Error(errorMessage);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const resetQuiz = () => {

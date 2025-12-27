@@ -87,7 +87,7 @@ const DocumentViewer = () => {
                     transition={{ delay: 0.2 }}
                     className="lg:col-span-1"
                 >
-                    <AIActionPanel documentId={document.id} />
+                    <AIActionPanel document={document} />
                 </motion.div>
             </div>
         </div>

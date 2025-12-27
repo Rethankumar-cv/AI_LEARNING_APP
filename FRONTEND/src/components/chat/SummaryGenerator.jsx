@@ -8,41 +8,68 @@ import { ParagraphSkeleton } from '../common/LoadingSkeleton';
 /**
  * AI Summary Generator Component
  */
-const SummaryGenerator = ({ documentId }) => {
-    const { summary, loading, generateSummary } = useAI();
+const SummaryGenerator = ({ document }) => {
+    const { summary: contextSummary, loading, generateSummary } = useAI();
     const [copied, setCopied] = useState(false);
+
+    // Use context summary (if just generated) or document summary (from DB)
+    const activeSummary = contextSummary || document?.summary;
+
+    // Check if we have a valid summary to display
+    // It should have sections (if structured) or at least be a non-empty string/object
+    const hasSummary = activeSummary && (
+        (typeof activeSummary === 'object' && (activeSummary.sections || activeSummary.title)) ||
+        (typeof activeSummary === 'string' && activeSummary.length > 0)
+    );
 
     const handleGenerate = async () => {
         try {
-            await generateSummary(documentId);
+            await generateSummary(document.id);
         } catch (error) {
             console.error('Error generating summary:', error);
         }
     };
 
     const handleCopy = () => {
-        if (!summary) return;
+        if (!displaySummary) return;
 
         // Convert summary to plain text
-        let text = `${summary.title}\n\n`;
-        summary.sections.forEach(section => {
+        let text = `${displaySummary.title}\n\n`;
+        displaySummary.sections.forEach(section => {
             text += `${section.heading}\n`;
             section.points.forEach(point => {
                 text += `• ${point}\n`;
             });
             text += '\n';
         });
-        text += `Keywords: ${summary.keywords.join(', ')}`;
+        if (displaySummary.keywords?.length) {
+            text += `Keywords: ${displaySummary.keywords.join(', ')}`;
+        }
 
         navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
 
+    // Normalize summary for display
+    const displaySummary = React.useMemo(() => {
+        if (!activeSummary) return null;
+        if (typeof activeSummary === 'string') {
+            return {
+                title: 'Document Summary',
+                sections: [
+                    { heading: 'Summary', points: [activeSummary] }
+                ],
+                keywords: []
+            };
+        }
+        return activeSummary;
+    }, [activeSummary]);
+
     return (
         <div className="h-full flex flex-col">
             <div className="flex-1 overflow-y-auto p-6">
-                {!summary && !loading ? (
+                {!displaySummary && !loading ? (
                     // Empty State
                     <div className="h-full flex items-center justify-center text-center">
                         <div>
@@ -78,7 +105,7 @@ const SummaryGenerator = ({ documentId }) => {
                         {/* Title */}
                         <div className="flex items-start justify-between">
                             <h3 className="text-2xl font-display font-bold text-slate-900">
-                                {summary.title}
+                                {displaySummary.title || 'Document Summary'}
                             </h3>
                             <Button
                                 variant="ghost"
@@ -91,7 +118,7 @@ const SummaryGenerator = ({ documentId }) => {
                         </div>
 
                         {/* Sections */}
-                        {summary.sections.map((section, index) => (
+                        {displaySummary.sections?.map((section, index) => (
                             <motion.div
                                 key={index}
                                 initial={{ opacity: 0, x: -20 }}
@@ -114,24 +141,26 @@ const SummaryGenerator = ({ documentId }) => {
                         ))}
 
                         {/* Keywords */}
-                        <div className="pt-4 border-t border-slate-200">
-                            <h4 className="text-sm font-semibold text-slate-900 mb-3">
-                                Key Topics
-                            </h4>
-                            <div className="flex flex-wrap gap-2">
-                                {summary.keywords.map((keyword, index) => (
-                                    <motion.span
-                                        key={index}
-                                        initial={{ opacity: 0, scale: 0.8 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        transition={{ delay: 0.3 + index * 0.05 }}
-                                        className="px-3 py-1 bg-gradient-to-r from-primary-100 to-purple-100 text-primary-700 rounded-full text-sm font-medium"
-                                    >
-                                        {keyword}
-                                    </motion.span>
-                                ))}
+                        {displaySummary.keywords?.length > 0 && (
+                            <div className="pt-4 border-t border-slate-200">
+                                <h4 className="text-sm font-semibold text-slate-900 mb-3">
+                                    Key Topics
+                                </h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {displaySummary.keywords.map((keyword, index) => (
+                                        <motion.span
+                                            key={index}
+                                            initial={{ opacity: 0, scale: 0.8 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            transition={{ delay: 0.3 + index * 0.05 }}
+                                            className="px-3 py-1 bg-gradient-to-r from-primary-100 to-purple-100 text-primary-700 rounded-full text-sm font-medium"
+                                        >
+                                            {keyword}
+                                        </motion.span>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* Regenerate Button */}
                         <div className="pt-4">

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import mockApi from '../services/mockApi';
+import { documentsAPI } from '../services/api';
+import { useAuth } from './AuthContext';
 
 const DocumentContext = createContext();
 
@@ -12,38 +13,45 @@ export const useDocuments = () => {
 };
 
 export const DocumentProvider = ({ children }) => {
+    const { isAuthenticated } = useAuth();
     const [documents, setDocuments] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    // Fetch documents on mount
+    // Fetch documents when authenticated
     useEffect(() => {
-        fetchDocuments();
-    }, []);
+        if (isAuthenticated) {
+            fetchDocuments();
+        }
+    }, [isAuthenticated]);
 
     const fetchDocuments = async () => {
         try {
             setLoading(true);
             setError(null);
-            const docs = await mockApi.getDocuments();
-            setDocuments(docs);
+            const response = await documentsAPI.getAll();
+            setDocuments(response.documents || []);
         } catch (err) {
-            setError(err.message);
+            const errorMessage = err.response?.data?.error || 'Failed to fetch documents';
+            setError(errorMessage);
+            console.error('Fetch documents error:', err);
         } finally {
             setLoading(false);
         }
     };
 
-    const uploadDocument = async (file) => {
+    const uploadDocument = async (file, title) => {
         try {
             setLoading(true);
             setError(null);
-            const newDoc = await mockApi.uploadDocument(file);
-            setDocuments(prev => [...prev, newDoc]);
-            return newDoc;
+            const response = await documentsAPI.upload(file, title);
+            // Fetch all documents again to get the complete list
+            await fetchDocuments();
+            return response.document;
         } catch (err) {
-            setError(err.message);
-            throw err;
+            const errorMessage = err.response?.data?.error || 'Failed to upload document';
+            setError(errorMessage);
+            throw new Error(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -53,11 +61,12 @@ export const DocumentProvider = ({ children }) => {
         try {
             setLoading(true);
             setError(null);
-            await mockApi.deleteDocument(id);
-            setDocuments(prev => prev.filter(doc => doc.id !== id));
+            await documentsAPI.delete(id);
+            setDocuments(prev => prev.filter(doc => doc._id !== id));
         } catch (err) {
-            setError(err.message);
-            throw err;
+            const errorMessage = err.response?.data?.error || 'Failed to delete document';
+            setError(errorMessage);
+            throw new Error(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -67,11 +76,12 @@ export const DocumentProvider = ({ children }) => {
         try {
             setLoading(true);
             setError(null);
-            const doc = await mockApi.getDocument(id);
-            return doc;
+            const response = await documentsAPI.getById(id);
+            return response.document;
         } catch (err) {
-            setError(err.message);
-            throw err;
+            const errorMessage = err.response?.data?.error || 'Failed to get document';
+            setError(errorMessage);
+            throw new Error(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -91,3 +101,4 @@ export const DocumentProvider = ({ children }) => {
 };
 
 export default DocumentContext;
+

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
-import mockApi from '../services/mockApi';
+import { authAPI } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -18,17 +18,38 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
+    // Auto-fetch user profile on mount if token exists
+    useEffect(() => {
+        const fetchProfile = async () => {
+            if (token && !user) {
+                try {
+                    const response = await authAPI.getProfile();
+                    setUser(response.user);
+                } catch (err) {
+                    // Token invalid, clear auth
+                    setUser(null);
+                    setToken(null);
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('token');
+                }
+            }
+        };
+        fetchProfile();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const login = async (email, password) => {
         try {
             setLoading(true);
             setError(null);
-            const response = await mockApi.login(email, password);
+            const response = await authAPI.login({ email, password });
             setUser(response.user);
             setToken(response.token);
             return response;
         } catch (err) {
-            setError(err.message);
-            throw err;
+            const errorMessage = err.response?.data?.error || 'Login failed. Please try again.';
+            setError(errorMessage);
+            throw new Error(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -38,13 +59,14 @@ export const AuthProvider = ({ children }) => {
         try {
             setLoading(true);
             setError(null);
-            const response = await mockApi.signup(name, email, password);
+            const response = await authAPI.register({ name, email, password });
             setUser(response.user);
             setToken(response.token);
             return response;
         } catch (err) {
-            setError(err.message);
-            throw err;
+            const errorMessage = err.response?.data?.error || 'Registration failed. Please try again.';
+            setError(errorMessage);
+            throw new Error(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -54,6 +76,18 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
         setToken(null);
         setError(null);
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+    };
+
+    const updateUserProfile = async (updates) => {
+        try {
+            const response = await authAPI.updateProfile(updates);
+            setUser(response.user);
+            return response;
+        } catch (err) {
+            throw new Error(err.response?.data?.error || 'Failed to update profile');
+        }
     };
 
     const isAuthenticated = !!token && !!user;
@@ -66,6 +100,7 @@ export const AuthProvider = ({ children }) => {
         login,
         signup,
         logout,
+        updateUserProfile,
         isAuthenticated,
     };
 
@@ -73,3 +108,4 @@ export const AuthProvider = ({ children }) => {
 };
 
 export default AuthContext;
+

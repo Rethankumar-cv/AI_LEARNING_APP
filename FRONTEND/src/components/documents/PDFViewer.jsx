@@ -47,7 +47,8 @@ const PDFViewer = ({ document }) => {
     };
 
     // Get the PDF URL from the document
-    const pdfUrl = document?.url;
+    // Backend now provides 'url' field with full path
+    const pdfUrl = document?.url || document?.fileUrl;
 
     if (!pdfUrl) {
         return (

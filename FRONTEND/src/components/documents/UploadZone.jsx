@@ -93,14 +93,18 @@ const UploadZone = () => {
         if (!file) return;
 
         try {
+            console.log('🚀 Starting upload for file:', file.name, 'Type:', file.type, 'Size:', file.size);
             setUploading(true);
             setProgress(0);
+            setError('');
 
             // Simulate progress
             await simulateProgress();
 
             // Upload file
-            await uploadDocument(file);
+            console.log('📤 Calling uploadDocument...');
+            const result = await uploadDocument(file);
+            console.log('✅ Upload successful! Result:', result);
 
             setUploadComplete(true);
 
@@ -112,8 +116,11 @@ const UploadZone = () => {
                 setUploadComplete(false);
             }, 2000);
         } catch (err) {
+            console.error('❌ Upload error:', err);
+            console.error('Error details:', err.response?.data);
             setError(err.message || 'Upload failed');
             setUploading(false);
+            setProgress(0);
         }
     };
 

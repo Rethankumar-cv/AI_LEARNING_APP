@@ -8,7 +8,7 @@ import clsx from 'clsx';
 /**
  * AI Action Panel with Tabs
  */
-const AIActionPanel = ({ documentId }) => {
+const AIActionPanel = ({ document }) => {
     const [activeTab, setActiveTab] = useState('chat');
 
     const tabs = [
@@ -51,8 +51,8 @@ const AIActionPanel = ({ documentId }) => {
 
             {/* Tab Content */}
             <div className="flex-1 overflow-hidden">
-                {activeTab === 'chat' && <ChatUI documentId={documentId} />}
-                {activeTab === 'summary' && <SummaryGenerator documentId={documentId} />}
+                {activeTab === 'chat' && <ChatUI documentId={document.id} />}
+                {activeTab === 'summary' && <SummaryGenerator document={document} />}
                 {activeTab === 'explain' && (
                     <div className="h-full flex items-center justify-center p-6 text-center">
                         <div>

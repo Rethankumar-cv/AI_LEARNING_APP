@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
-import mockApi from '../services/mockApi';
+import api, { flashcardsAPI, quizzesAPI } from '../services/api';
 
 const AIContext = createContext();
 
@@ -20,29 +20,44 @@ export const AIProvider = ({ children }) => {
     const [error, setError] = useState(null);
 
     const sendMessage = async (message, documentId) => {
-        try {
-            setTyping(true);
-            setError(null);
+        if (!message.trim()) return;
 
-            // Add user message
-            const userMessage = {
-                id: Date.now().toString(),
-                message,
-                sender: 'user',
+        const userMessage = {
+            id: Date.now().toString(),
+            message,
+            sender: 'user',
+            timestamp: new Date(),
+        };
+
+        setChatMessages((prev) => [...prev, userMessage]);
+        setLoading(true);
+        setError(null); // Clear previous errors
+
+        try {
+            // Call real backend API
+            const response = await api.post(`/documents/${documentId}/chat`, { message });
+
+            const aiMessage = {
+                id: (Date.now() + 1).toString(),
+                message: response.data.answer,
+                sender: 'ai',
                 timestamp: new Date(),
             };
-            setChatMessages(prev => [...prev, userMessage]);
 
-            // Get AI response
-            const aiResponse = await mockApi.sendChatMessage(message, documentId);
-            setChatMessages(prev => [...prev, aiResponse]);
-
-            return aiResponse;
+            setChatMessages((prev) => [...prev, aiMessage]);
         } catch (err) {
-            setError(err.message);
-            throw err;
+            console.error('Chat error:', err);
+            const errorMessage = {
+                id: (Date.now() + 1).toString(),
+                message: "I'm sorry, I couldn't process your request. Please try again.",
+                sender: 'ai',
+                timestamp: new Date(),
+                isError: true,
+            };
+            setChatMessages((prev) => [...prev, errorMessage]);
+            setError(err.message || 'Failed to send message');
         } finally {
-            setTyping(false);
+            setLoading(false);
         }
     };
 
@@ -50,7 +65,24 @@ export const AIProvider = ({ children }) => {
         try {
             setLoading(true);
             setError(null);
-            const summaryData = await mockApi.generateSummary(documentId);
+
+            // TODO: Summary is already generated on upload by backend
+            // This function should fetch the existing summary from the document
+            // For now, return placeholder with proper structure
+            const summaryData = {
+                title: 'Document Summary',
+                sections: [
+                    {
+                        heading: 'About Summary Generation',
+                        points: [
+                            'Summaries are automatically generated when you upload a document',
+                            'The summary is created using AI and appears in the document details',
+                            'This manual summary generation feature will be enabled once integrated with the backend'
+                        ]
+                    }
+                ],
+                keywords: ['Auto-generated', 'AI-powered', 'Coming soon']
+            };
             setSummary(summaryData);
             return summaryData;
         } catch (err) {
@@ -61,30 +93,32 @@ export const AIProvider = ({ children }) => {
         }
     };
 
-    const generateFlashcards = async (documentId) => {
+    const generateFlashcards = async (documentId, count = 10) => {
         try {
             setLoading(true);
             setError(null);
-            const cards = await mockApi.generateFlashcards(documentId);
-            setFlashcards(cards);
-            return cards;
+            const response = await flashcardsAPI.generate(documentId, count);
+            setFlashcards(response.flashcards || []);
+            return response.flashcards;
         } catch (err) {
-            setError(err.message);
-            throw err;
+            const errorMessage = err.response?.data?.error || 'Failed to generate flashcards';
+            setError(errorMessage);
+            throw new Error(errorMessage);
         } finally {
             setLoading(false);
         }
     };
 
-    const generateQuiz = async (documentId) => {
+    const generateQuiz = async (documentId, questionCount = 10) => {
         try {
             setLoading(true);
             setError(null);
-            const quiz = await mockApi.generateQuiz(documentId);
-            return quiz;
+            const response = await quizzesAPI.generate(documentId, questionCount);
+            return response.quiz;
         } catch (err) {
-            setError(err.message);
-            throw err;
+            const errorMessage = err.response?.data?.error || 'Failed to generate quiz';
+            setError(errorMessage);
+            throw new Error(errorMessage);
         } finally {
             setLoading(false);
         }
