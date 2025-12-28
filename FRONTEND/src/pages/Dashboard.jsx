@@ -1,45 +1,50 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Layers, Brain, Flame, TrendingUp, Sparkles, Award, Target } from 'lucide-react';
+import { FileText, Layers, Brain, Flame, TrendingUp, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import StatsCard from '../components/dashboard/StatsCard';
 import LearningChart from '../components/dashboard/LearningChart';
 import ActivityFeed from '../components/dashboard/ActivityFeed';
-import mockApi from '../services/mockApi';
+import { analyticsAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { CardSkeleton } from '../components/common/LoadingSkeleton';
 
 /**
- * Enhanced Dashboard Page with Premium Aesthetics
+ * Enhanced Dashboard Page - Completely Dynamic
  */
 const Dashboard = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [stats, setStats] = useState(null);
-    const [analytics, setAnalytics] = useState(null);
+    const [progress, setProgress] = useState(null);
     const [activities, setActivities] = useState([]);
+    const [achievements, setAchievements] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                setLoading(true);
-                const [statsData, analyticsData, activitiesData] = await Promise.all([
-                    mockApi.getStats(),
-                    mockApi.getAnalytics(),
-                    mockApi.getActivities(),
-                ]);
-
-                setStats(statsData);
-                setAnalytics(analyticsData);
-                setActivities(activitiesData.slice(0, 6)); // Show latest 6 activities
-            } catch (error) {
-                console.error('Error fetching dashboard data:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchData();
     }, []);
+
+    const fetchData = async () => {
+        try {
+            setLoading(true);
+            const [statsData, progressData, activityData, achievementsData] = await Promise.all([
+                analyticsAPI.getStats(),
+                analyticsAPI.getProgress(),
+                analyticsAPI.getActivity(6),
+                analyticsAPI.getAchievements(),
+            ]);
+
+            setStats(statsData);
+            setProgress(progressData);
+            setActivities(activityData.activities || []);
+            setAchievements(achievementsData.achievements || []);
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     if (loading) {
         return (
@@ -54,10 +59,22 @@ const Dashboard = () => {
         );
     }
 
-    // Mock data for micro-gamification
-    const studyStreak = stats?.studyStreak || 4;
-    const productivityIncrease = 15;
-    const achievementsClose = 2;
+    // Real user data
+    const userName = user?.name || 'there';
+    const studyStreak = stats?.stats?.studyStreak || 0;
+    const currentLevel = stats?.level?.currentLevel || 1;
+    const currentXP = stats?.level?.currentXP || 0;
+    const nextLevelXP = stats?.level?.nextLevelXP || 500;
+    const xpProgress = nextLevelXP > 0 ? Math.round((currentXP / nextLevelXP) * 100) : 0;
+
+    // Calculate achievements close to unlock (70%+ progress)
+    const achievementsClose = achievements.filter(
+        a => !a.unlocked && a.progress && a.target && (a.progress / a.target) >= 0.7
+    ).length;
+
+    // Calculate productivity increase from recent activity
+    const recentActivities = progress?.totalActivities || 0;
+    const productivityIncrease = Math.min(Math.round(recentActivities * 2.5), 99);
 
     return (
         <div className="space-y-8 relative">
@@ -104,7 +121,7 @@ const Dashboard = () => {
                             transition={{ delay: 0.2 }}
                             className="text-4xl md:text-5xl font-display font-bold mb-3 flex items-center gap-3"
                         >
-                            <span>Welcome back!</span>
+                            <span>Welcome back, {userName}!</span>
                             <motion.span
                                 animate={{ rotate: [0, 15, 0, -15, 0] }}
                                 transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
@@ -139,20 +156,22 @@ const Dashboard = () => {
                                 <p className="text-white/70 text-xs font-medium">Study Streak</p>
                             </div>
                         </motion.div>
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: 0.5 }}
-                            className="flex items-center gap-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl px-4 py-3 shadow-lg"
-                        >
-                            <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center shadow-lg">
-                                <TrendingUp className="w-6 h-6 text-white" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold">+{productivityIncrease}%</p>
-                                <p className="text-white/70 text-xs font-medium">Productivity</p>
-                            </div>
-                        </motion.div>
+                        {productivityIncrease > 0 && (
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: 0.5 }}
+                                className="flex items-center gap-3 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl px-4 py-3 shadow-lg"
+                            >
+                                <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center shadow-lg">
+                                    <TrendingUp className="w-6 h-6 text-white" />
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold">+{productivityIncrease}%</p>
+                                    <p className="text-white/70 text-xs font-medium">This Week</p>
+                                </div>
+                            </motion.div>
+                        )}
                     </div>
                 </div>
             </motion.div>
@@ -170,23 +189,27 @@ const Dashboard = () => {
                     </div>
                     <div>
                         <p className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                            <span>Level 7 Learner</span>
+                            <span>Level {currentLevel} Learner</span>
                             <span className="text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-semibold">
-                                75% to Level 8
+                                {xpProgress}% to Level {currentLevel + 1}
                             </span>
                         </p>
                         <p className="text-sm text-slate-600 dark:text-slate-400">
-                            {achievementsClose} achievements close to unlock 🏆
+                            {achievementsClose > 0 ? (
+                                <>{achievementsClose} achievement{achievementsClose !== 1 ? 's' : ''} close to unlock 🏆</>
+                            ) : (
+                                <>Keep learning to unlock achievements! 🏆</>
+                            )}
                         </p>
                     </div>
                 </div>
                 <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => navigate('/achievements')}
+                    onClick={() => navigate('/analytics')}
                     className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-semibold rounded-xl shadow-lg text-sm transition-all"
                 >
-                    View Achievements
+                    View Progress
                 </motion.button>
             </motion.div>
 
@@ -194,33 +217,29 @@ const Dashboard = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatsCard
                     title="Total Documents"
-                    value={stats?.totalDocuments || 0}
+                    value={stats?.stats?.totalDocuments || 0}
                     icon={FileText}
-                    trend={12}
                     color="blue"
                     delay={0}
                 />
                 <StatsCard
                     title="Flashcards Created"
-                    value={stats?.totalFlashcards || 0}
+                    value={stats?.stats?.totalFlashcards || 0}
                     icon={Layers}
-                    trend={8}
                     color="purple"
                     delay={0.1}
                 />
                 <StatsCard
                     title="Quizzes Taken"
-                    value={stats?.totalQuizzes || 0}
+                    value={stats?.stats?.totalQuizzes || 0}
                     icon={Brain}
-                    trend={15}
                     color="emerald"
                     delay={0.2}
                 />
                 <StatsCard
                     title="Study Streak"
-                    value={stats?.studyStreak || 0}
+                    value={studyStreak}
                     icon={Flame}
-                    trend={5}
                     color="orange"
                     delay={0.3}
                 />
@@ -235,7 +254,7 @@ const Dashboard = () => {
                     transition={{ delay: 0.5 }}
                     className="lg:col-span-2"
                 >
-                    <LearningChart data={analytics?.weeklyProgress || []} />
+                    <LearningChart data={progress?.progress || []} />
                 </motion.div>
 
                 {/* Enhanced Activity Feed - 1 column */}
