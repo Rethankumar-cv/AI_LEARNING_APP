@@ -70,9 +70,15 @@ router.post('/generate', protect, async (req, res) => {
         );
 
         // Update user stats
-        await User.findByIdAndUpdate(req.user.id, {
-            $inc: { 'stats.totalFlashcards': flashcards.length },
-        });
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { $inc: { 'stats.totalFlashcards': flashcards.length } },
+            { new: true }
+        );
+
+        // Update study streak
+        const { updateStreak } = require('../utils/streakUtils');
+        await updateStreak(user);
 
         // Create activity
         await Activity.create({

@@ -317,5 +317,32 @@ export const analyticsAPI = {
     },
 };
 
+// Profile API
+export const profileAPI = {
+    // Update profile info (name, email)
+    updateProfile: async (data) => {
+        const response = await api.put('/profile/update', data);
+        return response.data;
+    },
+
+    // Change password
+    changePassword: async (data) => {
+        const response = await api.put('/profile/password', data);
+        return response.data;
+    },
+
+    // Update notification preferences
+    updatePreferences: async (preferences) => {
+        const response = await api.put('/profile/preferences', preferences);
+        return response.data;
+    },
+
+    // Delete account
+    deleteAccount: async (data) => {
+        const response = await api.delete('/profile/delete', { data });
+        return response.data;
+    },
+};
+
 // Export axios instance for custom calls if needed
 export default api;

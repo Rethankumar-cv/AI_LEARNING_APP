@@ -17,8 +17,19 @@ const achievementSchema = new mongoose.Schema({
     },
     category: {
         type: String,
-        enum: ['learning', 'consistency', 'mastery', 'milestones'],
         required: true,
+        enum: ['document', 'quiz', 'flashcard', 'streak', 'level', 'mastery', 'consistency', 'speed', 'accuracy'],
+    },
+    level: {
+        type: Number,
+        required: true,
+        default: 1,
+        min: 1,
+        max: 5,
+    },
+    levelLocked: {
+        type: Boolean,
+        default: false,
     },
     title: {
         type: String,
@@ -43,6 +54,14 @@ const achievementSchema = new mongoose.Schema({
     progress: {
         type: Number,
         default: 0,
+    },
+    target: {
+        type: Number,
+        required: true,
+    },
+    unlocked: {
+        type: Boolean,
+        default: false,
     },
     requirement: {
         type: mongoose.Schema.Types.Mixed, // Flexible structure for different requirements

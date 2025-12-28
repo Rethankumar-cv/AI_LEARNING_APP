@@ -49,6 +49,7 @@ const userSchema = new mongoose.Schema({
     // User Statistics
     stats: {
         studyStreak: { type: Number, default: 0 },
+        lastStudyDate: { type: Date, default: null },
         totalDocuments: { type: Number, default: 0 },
         totalFlashcards: { type: Number, default: 0 },
         totalQuizzes: { type: Number, default: 0 },

@@ -17,9 +17,10 @@ const authRoutes = require('./routes/authRoutes');
 const documentRoutes = require('./routes/documentRoutes');
 const flashcardRoutes = require('./routes/flashcardRoutes');
 const quizRoutes = require('./routes/quizRoutes');
-const analyticsRoutes = require('./routes/analyticsRoutes');
 const achievementRoutes = require('./routes/achievementRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const profileRoutes = require('./routes/profileRoutes');
+
 
 // Initialize Express app
 const app = express();
@@ -61,7 +62,8 @@ app.use('/api/flashcards', flashcardRoutes);
 app.use('/api/quizzes', quizRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/achievements', achievementRoutes);
-app.use('/api/analytics', analyticsRoutes);
+app.use('/api/profile', profileRoutes);
+
 
 // Error handling middleware
 app.use((err, req, res, next) => {

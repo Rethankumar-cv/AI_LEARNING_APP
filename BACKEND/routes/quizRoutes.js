@@ -70,9 +70,15 @@ router.post('/generate', protect, async (req, res) => {
         await quiz.save();
 
         // Update user stats
-        await User.findByIdAndUpdate(req.user.id, {
-            $inc: { 'stats.totalQuizzes': 1 },
-        });
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { $inc: { 'stats.totalQuizzes': 1 } },
+            { new: true }
+        );
+
+        // Update study streak
+        const { updateStreak } = require('../utils/streakUtils');
+        await updateStreak(user);
 
         // Create activity
         await Activity.create({

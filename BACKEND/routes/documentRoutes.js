@@ -136,9 +136,18 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
         await document.save();
 
         // Update user stats
-        await User.findByIdAndUpdate(req.user.id, {
-            $inc: { 'stats.totalDocuments': 1 },
-        });
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { $inc: { 'stats.totalDocuments': 1 } },
+            { new: true }
+        );
+
+        // Update study streak
+        const { updateStreak } = require('../utils/streakUtils');
+        const streakUpdate = await updateStreak(user);
+        if (streakUpdate.streakIncreased) {
+            console.log(`🔥 Streak updated: Day ${streakUpdate.currentStreak}`);
+        }
 
         // Create activity
         await Activity.create({

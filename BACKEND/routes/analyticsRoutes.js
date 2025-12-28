@@ -13,6 +13,11 @@ const Document = require('../models/Document');
 const Flashcard = require('../models/Flashcard');
 const { getUserAchievements } = require('../services/achievementService');
 
+// Test endpoint - remove after debugging
+router.get('/test', (req, res) => {
+    res.json({ message: 'Analytics routes are working!' });
+});
+
 /**
  * @route   GET /api/analytics/stats
  * @desc    Get user statistics
@@ -168,15 +173,21 @@ router.get('/performance', protect, async (req, res) => {
  */
 router.get('/achievements', protect, async (req, res) => {
     try {
+        console.log('📍 Fetching achievements for user:', req.user.id);
         const achievements = await getUserAchievements(req.user.id);
+        console.log(`✅ Found ${achievements.length} achievements`);
 
         res.json({
             success: true,
             achievements,
         });
     } catch (error) {
-        console.error('Get achievements error:', error);
-        res.status(500).json({ error: 'Failed to fetch achievements' });
+        console.error('❌ Get achievements error:', error.message);
+        console.error('Stack:', error.stack);
+        res.status(500).json({
+            error: 'Failed to fetch achievements',
+            message: error.message
+        });
     }
 });
 
