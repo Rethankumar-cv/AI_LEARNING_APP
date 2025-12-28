@@ -250,6 +250,14 @@ export const quizzesAPI = {
         const response = await api.get('/quizzes/results/history');
         return response.data;
     },
+
+    /**
+     * Delete a quiz
+     */
+    delete: async (quizId) => {
+        const response = await api.delete(`/quizzes/${quizId}`);
+        return response.data;
+    },
 };
 
 // ============================================================

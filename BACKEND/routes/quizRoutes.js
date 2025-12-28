@@ -26,6 +26,15 @@ router.post('/generate', protect, async (req, res) => {
             return res.status(400).json({ error: 'Document ID is required' });
         }
 
+        // Validate questionCount
+        const count = parseInt(questionCount);
+        if (isNaN(count) || count < 1 || count > 50) {
+            return res.status(400).json({
+                error: 'Question count must be a number between 1 and 50',
+                questionCount: count
+            });
+        }
+
         // Get document
         const document = await Document.findOne({
             _id: documentId,
@@ -33,11 +42,21 @@ router.post('/generate', protect, async (req, res) => {
         });
 
         if (!document) {
-            return res.status(404).json({ error: 'Document not found' });
+            return res.status(404).json({ error: 'Document not found or access denied' });
+        }
+
+        // Check if document has sufficient content
+        if (!document.content || document.content.length < 100) {
+            return res.status(400).json({ error: 'Document content is too short to generate a quiz' });
         }
 
         // Generate quiz using AI
-        const aiQuestions = await generateQuiz(document.content, questionCount);
+        const aiQuestions = await generateQuiz(document.content, count);
+
+        // Validate AI response
+        if (!Array.isArray(aiQuestions) || aiQuestions.length === 0) {
+            throw new Error('AI returned invalid quiz format');
+        }
 
         // Create quiz
         const quiz = new Quiz({
@@ -67,9 +86,20 @@ router.post('/generate', protect, async (req, res) => {
         res.status(201).json({
             success: true,
             quiz,
+            questionCount: aiQuestions.length,
+            documentTitle: document.title,
         });
     } catch (error) {
         console.error('Generate quiz error:', error);
+
+        // Return specific error messages
+        if (error.message.includes('AI')) {
+            return res.status(503).json({
+                error: 'AI service temporarily unavailable. Please try again.',
+                details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+
         res.status(500).json({ error: 'Failed to generate quiz' });
     }
 });
@@ -162,7 +192,9 @@ router.post('/:id/submit', protect, async (req, res) => {
                 questionId: q.id,
                 question: q.question,
                 userAnswer,
+                userAnswerText: q.options[userAnswer] || 'Not answered',
                 correctAnswer: q.correctAnswer,
+                correctAnswerText: q.options[q.correctAnswer],
                 isCorrect,
                 explanation: q.explanation,
             };
@@ -229,6 +261,37 @@ router.get('/results/history', protect, async (req, res) => {
     } catch (error) {
         console.error('Get quiz history error:', error);
         res.status(500).json({ error: 'Failed to get quiz history' });
+    }
+});
+
+/**
+ * @route   DELETE /api/quizzes/:id
+ * @desc    Delete a quiz
+ * @access  Private
+ */
+router.delete('/:id', protect, async (req, res) => {
+    try {
+        const quiz = await Quiz.findOne({
+            _id: req.params.id,
+            userId: req.user.id,
+        });
+
+        if (!quiz) {
+            return res.status(404).json({ error: 'Quiz not found' });
+        }
+
+        await Quiz.deleteOne({ _id: req.params.id });
+
+        // Also delete associated quiz results
+        await QuizResult.deleteMany({ quizId: req.params.id });
+
+        res.json({
+            success: true,
+            message: 'Quiz deleted successfully',
+        });
+    } catch (error) {
+        console.error('Delete quiz error:', error);
+        res.status(500).json({ error: 'Failed to delete quiz' });
     }
 });
 

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuiz } from '../context/QuizContext';
 import Button from '../components/common/Button';
+import QuizList from '../components/quiz/QuizList';
 import EmptyState from '../components/common/EmptyState';
 import { CheckCircle, Clock, Zap, TrendingUp, Award } from 'lucide-react';
 import clsx from 'clsx';
@@ -12,10 +13,12 @@ import clsx from 'clsx';
  */
 const Quiz = () => {
     const navigate = useNavigate();
-    const { currentQuiz, answers, loadQuiz, submitAnswer, submitQuiz, loading } = useQuiz();
+    const { id: quizIdParam } = useParams();
+    const { currentQuiz, answers, loadQuiz, submitAnswer, submitQuiz, loading, error } = useQuiz();
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [quizStarted, setQuizStarted] = useState(false);
     const [showCompletion, setShowCompletion] = useState(false);
+    const [loadError, setLoadError] = useState(null);
 
     // Question count control with localStorage
     const [selectedQuestionCount, setSelectedQuestionCount] = useState(() => {
@@ -24,9 +27,14 @@ const Quiz = () => {
     });
 
     useEffect(() => {
-        // Load a quiz (using first document)
-        loadQuiz('1');
-    }, []);
+        // Load quiz from URL param if available
+        if (quizIdParam) {
+            loadQuiz(quizIdParam).catch((err) => {
+                console.error('Failed to load quiz:', err);
+                setLoadError(err.message || 'Failed to load quiz');
+            });
+        }
+    }, [quizIdParam]);
 
     // Save selected count to localStorage
     useEffect(() => {
@@ -48,7 +56,14 @@ const Quiz = () => {
     }, [quizStarted, currentQuestionIndex]);
 
     const handleAnswerSelect = (optionIndex) => {
-        submitAnswer(activeQuestions[currentQuestionIndex].id, optionIndex);
+        const currentCard = activeQuestions[currentQuestionIndex];
+        console.log('Answer selected:', {
+            questionId: currentCard?.id,
+            questionIndex: currentQuestionIndex,
+            selectedOption: optionIndex,
+            question: currentCard
+        });
+        submitAnswer(currentCard.id, optionIndex);
     };
 
     const handleNext = () => {
@@ -68,9 +83,16 @@ const Quiz = () => {
         }
     };
 
-    const handleSubmit = () => {
-        const results = submitQuiz();
-        navigate('/quiz/result');
+    const handleSubmit = async () => {
+        try {
+            await submitQuiz();
+            navigate('/quiz/result');
+        } catch (err) {
+            console.error('Failed to submit quiz:', err);
+            // Still navigate to results page even if submission fails
+            // QuizContext stores results locally
+            navigate('/quiz/result');
+        }
     };
 
     const handleStartQuiz = () => {
@@ -84,6 +106,41 @@ const Quiz = () => {
         setQuizStarted(false);
     };
 
+    // Get active questions based on selected count - MUST be before conditional returns
+    const getActiveQuestions = () => {
+        if (!currentQuiz || !currentQuiz.questions) return [];
+        if (selectedQuestionCount === 'all') return currentQuiz.questions;
+        return currentQuiz.questions.slice(0, Math.min(selectedQuestionCount, currentQuiz.questions.length));
+    };
+
+    const activeQuestions = getActiveQuestions();
+    const currentQuestion = activeQuestions[currentQuestionIndex];
+    const selectedAnswer = answers[currentQuestion?.id];
+    const progress = activeQuestions.length > 0 ? ((currentQuestionIndex + 1) / activeQuestions.length) * 100 : 0;
+    const answeredCount = Object.keys(answers).filter(id =>
+        activeQuestions.some(q => q.id === id)
+    ).length;
+    const allQuestionsAnswered = answeredCount === activeQuestions.length;
+    const isLastQuestion = currentQuestionIndex === activeQuestions.length - 1;
+
+    // Mock data
+    const mockDifficulty = 'Medium';
+    const estimatedMinutes = Math.ceil(activeQuestions.length * 0.6);
+
+    // Debug logging - MUST be before conditional returns
+    useEffect(() => {
+        if (activeQuestions.length > 0) {
+            console.log('Quiz State:', {
+                totalQuestions: activeQuestions.length,
+                answeredCount,
+                allQuestionsAnswered,
+                isLastQuestion,
+                currentIndex: currentQuestionIndex,
+                answers
+            });
+        }
+    }, [answeredCount, currentQuestionIndex, activeQuestions.length]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
@@ -93,6 +150,25 @@ const Quiz = () => {
                 </div>
             </div>
         );
+    }
+
+    if (loadError) {
+        return (
+            <EmptyState
+                icon="❌"
+                title="Failed to load quiz"
+                description={loadError}
+                action={
+                    <Button variant="primary" onClick={() => navigate('/documents')}>
+                        Go to Documents
+                    </Button>
+                }
+            />
+        );
+    }
+
+    if (!quizIdParam) {
+        return <QuizList />;
     }
 
     if (!currentQuiz) {
@@ -109,26 +185,6 @@ const Quiz = () => {
             />
         );
     }
-
-    // Get active questions based on selected count
-    const getActiveQuestions = () => {
-        if (selectedQuestionCount === 'all') return currentQuiz.questions;
-        return currentQuiz.questions.slice(0, Math.min(selectedQuestionCount, currentQuiz.questions.length));
-    };
-
-    const activeQuestions = getActiveQuestions();
-    const currentQuestion = activeQuestions[currentQuestionIndex];
-    const selectedAnswer = answers[currentQuestion?.id];
-    const progress = ((currentQuestionIndex + 1) / activeQuestions.length) * 100;
-    const answeredCount = Object.keys(answers).filter(id =>
-        activeQuestions.some(q => q.id === id)
-    ).length;
-    const allQuestionsAnswered = answeredCount === activeQuestions.length;
-    const isLastQuestion = currentQuestionIndex === activeQuestions.length - 1;
-
-    // Mock data
-    const mockDifficulty = 'Medium';
-    const estimatedMinutes = Math.ceil(activeQuestions.length * 0.6);
 
     // Question Setup Screen
     if (!quizStarted) {
@@ -185,8 +241,8 @@ const Quiz = () => {
                                 whileTap={{ scale: 0.95 }}
                                 onClick={() => handleCountChange(count)}
                                 className={`relative p-6 rounded-xl font-bold text-lg transition-all ${selectedQuestionCount === count
-                                        ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-xl scale-105'
-                                        : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                                    ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-xl scale-105'
+                                    : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                                     }`}
                             >
                                 <div className="text-center">
@@ -323,10 +379,10 @@ const Quiz = () => {
                             animate={{ scale: 1 }}
                             transition={{ delay: index * 0.02 }}
                             className={`flex-shrink-0 w-2 h-2 rounded-full transition-all ${index < currentQuestionIndex
-                                    ? 'bg-emerald-500 scale-110'
-                                    : index === currentQuestionIndex
-                                        ? 'bg-teal-600 scale-125 shadow-lg'
-                                        : 'bg-slate-300 dark:bg-slate-600'
+                                ? 'bg-emerald-500 scale-110'
+                                : index === currentQuestionIndex
+                                    ? 'bg-teal-600 scale-125 shadow-lg'
+                                    : 'bg-slate-300 dark:bg-slate-600'
                                 }`}
                         />
                     ))}
@@ -360,13 +416,6 @@ const Quiz = () => {
                     transition={{ duration: 0.3 }}
                     className="bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-xl border border-slate-200 dark:border-slate-700 hover:shadow-2xl transition-shadow"
                 >
-                    {/* Topic Tag */}
-                    <div className="mb-4">
-                        <span className="inline-block px-3 py-1 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 border border-teal-300 dark:border-teal-700 rounded-full text-xs font-semibold">
-                            💡 React Fundamentals
-                        </span>
-                    </div>
-
                     {/* Question */}
                     <h3 className="text-2xl font-display font-bold text-slate-900 dark:text-white mb-8 leading-relaxed">
                         {currentQuestion.question}

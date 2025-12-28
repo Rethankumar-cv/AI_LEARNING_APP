@@ -111,75 +111,83 @@ const QuizResult = () => {
 
             {/* Question Review */}
             <div className="space-y-4">
-                <h3 className="text-xl font-display font-bold text-slate-900">
+                <h3 className="text-xl font-display font-bold text-slate-900 dark:text-white">
                     Review Your Answers
                 </h3>
 
-                {questionResults.map((result, index) => (
-                    <motion.div
-                        key={result.questionId}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        className="bg-white/70 backdrop-blur-md border border-white/20 shadow-glass rounded-2xl p-6"
-                    >
-                        {/* Question Header */}
-                        <div className="flex items-start gap-3 mb-4">
-                            {result.isCorrect ? (
-                                <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
-                            ) : (
-                                <XCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
-                            )}
-                            <div className="flex-1">
-                                <h4 className="font-semibold text-slate-900 mb-2">
-                                    Question {index + 1}: {result.question}
-                                </h4>
-                            </div>
-                        </div>
-
-                        {/* Options */}
-                        <div className="space-y-2 mb-4">
-                            {result.options.map((option, optionIndex) => (
-                                <div
-                                    key={optionIndex}
-                                    className={clsx(
-                                        'p-3 rounded-lg text-sm',
-                                        optionIndex === result.correctAnswer && 'bg-green-100 border-2 border-green-300',
-                                        optionIndex === result.userAnswer && optionIndex !== result.correctAnswer && 'bg-red-100 border-2 border-red-300',
-                                        optionIndex !== result.correctAnswer && optionIndex !== result.userAnswer && 'bg-slate-50'
-                                    )}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        {optionIndex === result.correctAnswer && (
-                                            <CheckCircle className="w-4 h-4 text-green-600" />
-                                        )}
-                                        {optionIndex === result.userAnswer && optionIndex !== result.correctAnswer && (
-                                            <XCircle className="w-4 h-4 text-red-600" />
-                                        )}
-                                        <span className={clsx(
-                                            optionIndex === result.correctAnswer && 'font-semibold text-green-900',
-                                            optionIndex === result.userAnswer && optionIndex !== result.correctAnswer && 'font-semibold text-red-900'
-                                        )}>
-                                            {option}
-                                        </span>
-                                    </div>
+                {questionResults && questionResults.length > 0 ? (
+                    questionResults.map((result, index) => (
+                        <motion.div
+                            key={result.questionId || index}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                            className="bg-white/70 backdrop-blur-md border border-white/20 shadow-glass rounded-2xl p-6"
+                        >
+                            {/* Question Header */}
+                            <div className="flex items-start gap-3 mb-4">
+                                {result.isCorrect ? (
+                                    <CheckCircle className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
+                                ) : (
+                                    <XCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-1" />
+                                )}
+                                <div className="flex-1">
+                                    <h4 className="font-semibold text-slate-900 dark:text-white mb-2">
+                                        Question {index + 1}: {result.question}
+                                    </h4>
                                 </div>
-                            ))}
-                        </div>
-
-                        {/* Explanation */}
-                        {result.explanation && (
-                            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
-                                <p className="text-sm font-semibold text-blue-900 mb-1">
-                                    Explanation:
-                                </p>
-                                <p className="text-sm text-blue-800">
-                                    {result.explanation}
-                                </p>
                             </div>
-                        )}
-                    </motion.div>
-                ))}
+
+                            {/* User Answer & Correct Answer */}
+                            <div className="space-y-3 mb-4">
+                                {!result.isCorrect && (
+                                    <>
+                                        <div className="p-3 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded">
+                                            <div className="flex items-start gap-2">
+                                                <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                                                <div>
+                                                    <p className="text-sm font-semibold text-red-900 dark:text-red-100">Your Answer:</p>
+                                                    <p className="text-sm text-red-800 dark:text-red-200 mt-1">{result.userAnswerText}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="p-3 bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 rounded">
+                                            <div className="flex items-start gap-2">
+                                                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                                                <div>
+                                                    <p className="text-sm font-semibold text-green-900 dark:text-green-100">Correct Answer:</p>
+                                                    <p className="text-sm text-green-800 dark:text-green-200 mt-1">{result.correctAnswerText}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                                {result.isCorrect && (
+                                    <div className="flex items-center gap-2">
+                                        <CheckCircle className="w-5 h-5 text-green-600" />
+                                        <span className="text-sm font-semibold text-green-600">You answered correctly!</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Explanation */}
+                            {result.explanation && (
+                                <div className="bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 p-4 rounded">
+                                    <p className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">
+                                        Explanation:
+                                    </p>
+                                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                                        {result.explanation}
+                                    </p>
+                                </div>
+                            )}
+                        </motion.div>
+                    ))
+                ) : (
+                    <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                        <p>No detailed results available.</p>
+                    </div>
+                )}
             </div>
         </div>
     );

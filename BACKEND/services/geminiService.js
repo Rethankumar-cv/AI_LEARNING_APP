@@ -164,10 +164,28 @@ Rules:
             max_tokens: 3000
         });
 
+
         let responseText = completion.choices[0].message.content.trim();
         responseText = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
 
-        return JSON.parse(responseText);
+        // Parse AI response
+        let parsedQuestions = JSON.parse(responseText);
+
+        // Ensure it's an array
+        if (!Array.isArray(parsedQuestions)) {
+            throw new Error('AI did not return a valid array of questions');
+        }
+
+        // Add unique IDs to each question
+        parsedQuestions = parsedQuestions.map((q, index) => ({
+            id: crypto.randomUUID(), // Generate unique ID for each question
+            question: q.question,
+            options: q.options,
+            correctAnswer: q.correctAnswer,
+            explanation: q.explanation || ''
+        }));
+
+        return parsedQuestions;
 
     } catch (error) {
         console.error("Groq quiz error:", error);
