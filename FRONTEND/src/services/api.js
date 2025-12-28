@@ -295,29 +295,24 @@ export const achievementsAPI = {
 // ============================================================
 
 export const analyticsAPI = {
-    /**
-     * Get user statistics
-     */
     getStats: async () => {
         const response = await api.get('/analytics/stats');
         return response.data;
     },
-
-    /**
-     * Get weekly progress
-     */
     getProgress: async () => {
         const response = await api.get('/analytics/progress');
         return response.data;
     },
-
-    /**
-     * Get activity feed
-     */
+    getPerformance: async () => {
+        const response = await api.get('/analytics/performance');
+        return response.data;
+    },
     getActivity: async (limit = 20) => {
-        const response = await api.get('/analytics/activity', {
-            params: { limit },
-        });
+        const response = await api.get(`/analytics/activity?limit=${limit}`);
+        return response.data;
+    },
+    getAchievements: async () => {
+        const response = await api.get('/analytics/achievements');
         return response.data;
     },
 };

@@ -9,6 +9,9 @@ const { protect } = require('../middleware/auth');
 const User = require('../models/User');
 const Activity = require('../models/Activity');
 const QuizResult = require('../models/QuizResult');
+const Document = require('../models/Document');
+const Flashcard = require('../models/Flashcard');
+const { getUserAchievements } = require('../services/achievementService');
 
 /**
  * @route   GET /api/analytics/stats
@@ -110,6 +113,70 @@ router.get('/activity', protect, async (req, res) => {
     } catch (error) {
         console.error('Get activity error:', error);
         res.status(500).json({ error: 'Failed to get activity feed' });
+    }
+});
+
+/**
+ * @route   GET /api/analytics/performance
+ * @desc    Get performance metrics
+ * @access  Private
+ */
+router.get('/performance', protect, async (req, res) => {
+    try {
+        // Quiz performance
+        const quizResults = await QuizResult.find({ userId: req.user.id });
+
+        const quizStats = {
+            totalQuizzes: quizResults.length,
+            averageScore: 0,
+            bestScore: 0,
+        };
+
+        if (quizResults.length > 0) {
+            const totalScore = quizResults.reduce((sum, result) => sum + result.score, 0);
+            quizStats.averageScore = Math.round(totalScore / quizResults.length);
+            quizStats.bestScore = Math.max(...quizResults.map(r => r.score));
+        }
+
+        // Flashcard stats
+        const totalFlashcards = await Flashcard.countDocuments({ userId: req.user.id });
+        const favoriteFlashcards = await Flashcard.countDocuments({
+            userId: req.user.id,
+            isFavorite: true
+        });
+
+        res.json({
+            success: true,
+            performance: {
+                quiz: quizStats,
+                flashcards: {
+                    total: totalFlashcards,
+                    favorites: favoriteFlashcards,
+                },
+            },
+        });
+    } catch (error) {
+        console.error('Get performance error:', error);
+        res.status(500).json({ error: 'Failed to get performance data' });
+    }
+});
+
+/**
+ * @route   GET /api/analytics/achievements
+ * @desc    Get user achievements
+ * @access  Private
+ */
+router.get('/achievements', protect, async (req, res) => {
+    try {
+        const achievements = await getUserAchievements(req.user.id);
+
+        res.json({
+            success: true,
+            achievements,
+        });
+    } catch (error) {
+        console.error('Get achievements error:', error);
+        res.status(500).json({ error: 'Failed to fetch achievements' });
     }
 });
 
