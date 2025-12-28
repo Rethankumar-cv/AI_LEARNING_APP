@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Star, ChevronLeft, ChevronRight, RotateCw, CheckCircle,
     RefreshCw, Sparkles, Flame, Award, BookOpen
 } from 'lucide-react';
-import mockApi from '../services/mockApi';
+import { flashcardsAPI, documentsAPI, authAPI } from '../services/api';
 import Button from '../components/common/Button';
 import EmptyState from '../components/common/EmptyState';
 import { CardSkeleton } from '../components/common/LoadingSkeleton';
@@ -15,7 +15,14 @@ import { CardSkeleton } from '../components/common/LoadingSkeleton';
  */
 const Flashcards = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const documentIdParam = searchParams.get('documentId');
+    const favoritesParam = searchParams.get('favorites');
+
     const [flashcards, setFlashcards] = useState([]);
+    const [documents, setDocuments] = useState([]);
+    const [selectedDocumentId, setSelectedDocumentId] = useState(documentIdParam || 'all');
+    const [showFavoritesOnly, setShowFavoritesOnly] = useState(favoritesParam === 'true');
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -24,20 +31,34 @@ const Flashcards = () => {
     const [completedCount, setCompletedCount] = useState(0);
     const [showCompletion, setShowCompletion] = useState(false);
 
+    // User stats - fetch from backend
+    const [userStats, setUserStats] = useState({
+        studyStreak: 0,
+        totalFlashcards: 0
+    });
+
     // Card count control with localStorage
     const [selectedCount, setSelectedCount] = useState(() => {
         const saved = localStorage.getItem('flashcardCount');
         return saved ? parseInt(saved) : 10;
     });
 
-    // Mock study data
+    // Mock study data (can be replaced with real stats later)
     const studyStreak = 7;
-    const cardsStudiedToday = 15;
+    const cardsStudiedToday = flashcards.length;
     const mockAccuracy = 85;
 
     useEffect(() => {
         fetchFlashcards();
-    }, []);
+        fetchDocuments();
+        fetchUserStats();
+    }, [selectedDocumentId]);
+
+    useEffect(() => {
+        if (documentIdParam) {
+            setSelectedDocumentId(documentIdParam);
+        }
+    }, [documentIdParam]);
 
     // Save selected count to localStorage
     useEffect(() => {
@@ -62,12 +83,48 @@ const Flashcards = () => {
     const fetchFlashcards = async () => {
         try {
             setLoading(true);
-            const cards = await mockApi.getFlashcards();
-            setFlashcards(cards);
+            const params = {};
+
+            // Filter by document if specified
+            if (selectedDocumentId && selectedDocumentId !== 'all') {
+                params.documentId = selectedDocumentId;
+            }
+
+            // Filter by favorites if specified
+            if (showFavoritesOnly) {
+                params.favorites = 'true';
+            }
+
+            const response = await flashcardsAPI.getAll(params);
+            setFlashcards(response.flashcards || []);
         } catch (error) {
             console.error('Error fetching flashcards:', error);
+            setFlashcards([]);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchDocuments = async () => {
+        try {
+            const response = await documentsAPI.getAll();
+            setDocuments(response.documents || []);
+        } catch (error) {
+            console.error('Error fetching documents:', error);
+        }
+    };
+
+    const fetchUserStats = async () => {
+        try {
+            const response = await authAPI.getProfile();
+            if (response.success && response.user) {
+                setUserStats({
+                    studyStreak: response.user.stats?.studyStreak || 0,
+                    totalFlashcards: response.user.stats?.totalFlashcards || 0
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching user stats:', error);
         }
     };
 
@@ -107,20 +164,43 @@ const Flashcards = () => {
         try {
             const activeCards = getActiveCards();
             const currentCard = activeCards[currentIndex];
-            const updatedCard = await mockApi.toggleFavorite(currentCard.id);
 
+            // Support both _id and id
+            const cardId = currentCard._id || currentCard.id;
+
+            if (!cardId) {
+                console.error('No card ID found:', currentCard);
+                showToastMessage('Error: Card ID not found');
+                return;
+            }
+
+            console.log('Toggling favorite for card:', cardId);
+            const response = await flashcardsAPI.toggleFavorite(cardId);
+
+            console.log('Toggle response:', response);
+
+            // Update flashcards state - support both _id and id
             setFlashcards(cards =>
-                cards.map(card => card.id === updatedCard.id ? updatedCard : card)
+                cards.map(card => {
+                    const id = card._id || card.id;
+                    if (id === cardId) {
+                        return response.flashcard || { ...card, isFavorite: !card.isFavorite };
+                    }
+                    return card;
+                })
             );
 
             // Show toast
-            if (updatedCard.isFavorite) {
+            const isFavorite = response.flashcard?.isFavorite ?? response.isFavorite;
+            if (isFavorite) {
                 showToastMessage('Saved for revision ⭐');
             } else {
                 showToastMessage('Removed from favorites');
             }
         } catch (error) {
             console.error('Error toggling favorite:', error);
+            console.error('Error response:', error.response?.data);
+            showToastMessage(error.response?.data?.error || 'Failed to update favorite');
         }
     };
 
@@ -238,21 +318,21 @@ const Flashcards = () => {
                                 <Flame className="w-4 h-4 text-orange-300" />
                                 <p className="text-xs text-white/80">Streak</p>
                             </div>
-                            <p className="text-xl font-bold">{studyStreak} days</p>
+                            <p className="text-xl font-bold">{userStats.studyStreak} days</p>
                         </div>
                         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/20">
                             <div className="flex items-center gap-2 mb-1">
                                 <BookOpen className="w-4 h-4 text-blue-300" />
                                 <p className="text-xs text-white/80">Today</p>
                             </div>
-                            <p className="text-xl font-bold">{cardsStudiedToday} cards</p>
+                            <p className="text-xl font-bold">{flashcards.length} cards</p>
                         </div>
                         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/20">
                             <div className="flex items-center gap-2 mb-1">
                                 <Award className="w-4 h-4 text-yellow-300" />
                                 <p className="text-xs text-white/80">Accuracy</p>
                             </div>
-                            <p className="text-xl font-bold">{mockAccuracy}%</p>
+                            <p className="text-xl font-bold">{flashcards.length > 0 ? Math.round(flashcards.reduce((sum, c) => sum + (c.masteryLevel || 0), 0) / flashcards.length) : 0}%</p>
                         </div>
                         <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/20">
                             <div className="flex items-center gap-2 mb-1">
@@ -264,6 +344,41 @@ const Flashcards = () => {
                     </div>
                 </div>
             </motion.div>
+
+            {/* Document Filter */}
+            {documents.length > 0 && (
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-lg border border-slate-200 dark:border-slate-700"
+                >
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div>
+                            <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">Filter by Document</h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">Show flashcards from a specific document</p>
+                        </div>
+                        <select
+                            value={selectedDocumentId}
+                            onChange={(e) => {
+                                console.log('Selected document ID:', e.target.value);
+                                setSelectedDocumentId(e.target.value);
+                            }}
+                            className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-medium text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        >
+                            <option value="all">All Documents</option>
+                            {documents.map((doc) => {
+                                const docId = doc._id || doc.id;
+                                console.log('Document:', doc.title || doc.name, 'ID:', docId);
+                                return (
+                                    <option key={docId} value={docId}>
+                                        {doc.title || doc.name}
+                                    </option>
+                                );
+                            })}
+                        </select>
+                    </div>
+                </motion.div>
+            )}
 
             {/* Card Count Selector */}
             <motion.div
@@ -282,8 +397,8 @@ const Flashcards = () => {
                                 key={count}
                                 onClick={() => handleCountChange(count)}
                                 className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${selectedCount === count
-                                        ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg scale-105'
-                                        : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg scale-105'
+                                    : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                                     }`}
                             >
                                 {count === 'all' ? 'All' : count}
@@ -344,10 +459,10 @@ const Flashcards = () => {
                                     animate={{ scale: 1 }}
                                     transition={{ delay: index * 0.02 }}
                                     className={`flex-shrink-0 w-2 h-2 rounded-full transition-all ${index < currentIndex
-                                            ? 'bg-green-500 scale-110'
-                                            : index === currentIndex
-                                                ? 'bg-purple-600 scale-125 shadow-lg'
-                                                : 'bg-slate-300 dark:bg-slate-600'
+                                        ? 'bg-green-500 scale-110'
+                                        : index === currentIndex
+                                            ? 'bg-purple-600 scale-125 shadow-lg'
+                                            : 'bg-slate-300 dark:bg-slate-600'
                                         }`}
                                 />
                             ))}
@@ -363,100 +478,100 @@ const Flashcards = () => {
                         {/* Context Tags */}
                         <div className="flex flex-wrap gap-2 mb-3">
                             <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-700 rounded-full text-xs font-semibold">
-                                📄 React Concepts
-                            </span>
-                            <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border border-purple-300 dark:border-purple-700 rounded-full text-xs font-semibold">
-                                💡 Fundamentals
+                                📄 {currentCard.topic || 'General'}
                             </span>
                             <span className={`px-3 py-1 ${difficultyColors[mockDifficulty]} border rounded-full text-xs font-semibold`}>
                                 {mockDifficulty}
                             </span>
                         </div>
 
-                        <div
-                            onClick={handleFlip}
-                            className="relative w-full aspect-[3/2] cursor-pointer"
-                            style={{ transformStyle: 'preserve-3d' }}
-                        >
-                            {/* Card Inner Container with 3D Flip */}
-                            <motion.div
-                                animate={{ rotateY: isFlipped ? 180 : 0 }}
-                                transition={{ duration: 0.6, type: 'spring', stiffness: 80 }}
+                        {/* Card container with star button */}
+                        <div className="relative">
+                            <div
+                                onClick={handleFlip}
+                                className="relative w-full aspect-[3/2] cursor-pointer"
                                 style={{ transformStyle: 'preserve-3d' }}
-                                className="relative w-full h-full"
                             >
-                                {/* Front Side - Question */}
-                                <div
-                                    className="absolute inset-0 bg-gradient-to-br from-violet-500 via-purple-600 to-indigo-600 dark:from-violet-700 dark:via-purple-800 dark:to-indigo-800 rounded-3xl p-8 md:p-12 shadow-2xl flex flex-col items-center justify-center text-center"
-                                    style={{
-                                        backfaceVisibility: 'hidden',
-                                        WebkitBackfaceVisibility: 'hidden'
-                                    }}
+                                {/* Card Inner Container with 3D Flip */}
+                                <motion.div
+                                    animate={{ rotateY: isFlipped ? 180 : 0 }}
+                                    transition={{ duration: 0.6, type: 'spring', stiffness: 80 }}
+                                    style={{ transformStyle: 'preserve-3d' }}
+                                    className="relative w-full h-full"
                                 >
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        className="w-full"
+                                    {/* Front Side - Question */}
+                                    <div
+                                        className="absolute inset-0 bg-gradient-to-br from-violet-500 via-purple-600 to-indigo-600 dark:from-violet-700 dark:via-purple-800 dark:to-indigo-800 rounded-3xl p-8 md:p-12 shadow-2xl flex flex-col items-center justify-center text-center"
+                                        style={{
+                                            backfaceVisibility: 'hidden',
+                                            WebkitBackfaceVisibility: 'hidden'
+                                        }}
                                     >
-                                        <div className="inline-block px-4 py-1.5 bg-white/20 backdrop-blur-sm rounded-full mb-6">
-                                            <p className="text-xs font-bold text-white uppercase tracking-wider">
-                                                Question
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="w-full"
+                                        >
+                                            <div className="inline-block px-4 py-1.5 bg-white/20 backdrop-blur-sm rounded-full mb-6">
+                                                <p className="text-xs font-bold text-white uppercase tracking-wider">
+                                                    Question
+                                                </p>
+                                            </div>
+                                            <p className="text-xl md:text-3xl font-display font-bold text-white leading-relaxed mb-8">
+                                                {currentCard.question}
                                             </p>
-                                        </div>
-                                        <p className="text-xl md:text-3xl font-display font-bold text-white leading-relaxed mb-8">
-                                            {currentCard.question}
-                                        </p>
-                                        <div className="flex items-center justify-center gap-2 text-white/70">
-                                            <RotateCw className="w-4 h-4" />
-                                            <p className="text-sm">Click or press Space to reveal answer</p>
-                                        </div>
-                                    </motion.div>
-                                </div>
+                                            <div className="flex items-center justify-center gap-2 text-white/70">
+                                                <RotateCw className="w-4 h-4" />
+                                                <p className="text-sm">Click or press Space to reveal answer</p>
+                                            </div>
+                                        </motion.div>
+                                    </div>
 
-                                {/* Back Side - Answer */}
-                                <div
-                                    className="absolute inset-0 bg-gradient-to-br from-pink-500 via-rose-600 to-purple-600 dark:from-pink-700 dark:via-rose-800 dark:to-purple-800 rounded-3xl p-8 md:p-12 shadow-2xl flex flex-col items-center justify-center text-center"
-                                    style={{
-                                        backfaceVisibility: 'hidden',
-                                        WebkitBackfaceVisibility: 'hidden',
-                                        transform: 'rotateY(180deg)'
-                                    }}
-                                >
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        className="w-full"
+                                    {/* Back Side - Answer */}
+                                    <div
+                                        className="absolute inset-0 bg-gradient-to-br from-pink-500 via-rose-600 to-purple-600 dark:from-pink-700 dark:via-rose-800 dark:to-purple-800 rounded-3xl p-8 md:p-12 shadow-2xl flex flex-col items-center justify-center text-center"
+                                        style={{
+                                            backfaceVisibility: 'hidden',
+                                            WebkitBackfaceVisibility: 'hidden',
+                                            transform: 'rotateY(180deg)'
+                                        }}
                                     >
-                                        <div className="inline-block px-4 py-1.5 bg-white/20 backdrop-blur-sm rounded-full mb-6">
-                                            <p className="text-xs font-bold text-white uppercase tracking-wider">
-                                                Answer
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="w-full"
+                                        >
+                                            <div className="inline-block px-4 py-1.5 bg-white/20 backdrop-blur-sm rounded-full mb-6">
+                                                <p className="text-xs font-bold text-white uppercase tracking-wider">
+                                                    Answer
+                                                </p>
+                                            </div>
+                                            <p className="text-lg md:text-2xl text-white leading-relaxed font-medium">
+                                                {currentCard.answer}
                                             </p>
-                                        </div>
-                                        <p className="text-lg md:text-2xl text-white leading-relaxed font-medium">
-                                            {currentCard.answer}
-                                        </p>
-                                    </motion.div>
-                                </div>
-                            </motion.div>
-                        </div>
+                                        </motion.div>
+                                    </div>
+                                </motion.div>
+                            </div>
 
-                        {/* Favorite Button (Floating) */}
-                        <motion.button
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                toggleFavorite();
-                            }}
-                            className="absolute top-4 right-4 w-12 h-12 bg-white dark:bg-slate-800 rounded-full shadow-xl flex items-center justify-center z-10 border-2 border-white dark:border-slate-700"
-                        >
-                            <Star
-                                className={`w-6 h-6 transition-all ${currentCard.isFavorite
+                            {/* Favorite Button (Floating) - MOVED OUTSIDE flip container */}
+                            <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleFavorite();
+                                }}
+                                className="absolute top-4 right-4 w-12 h-12 bg-white dark:bg-slate-800 rounded-full shadow-xl flex items-center justify-center z-20 border-2 border-white dark:border-slate-700"
+                            >
+                                <Star
+                                    className={`w-6 h-6 transition-all ${currentCard.isFavorite
                                         ? 'fill-yellow-400 text-yellow-400 scale-110'
                                         : 'text-slate-400 dark:text-slate-500'
-                                    }`}
-                            />
-                        </motion.button>
+                                        }`}
+                                />
+                            </motion.button>
+                        </div>
                     </motion.div>
 
                     {/* Study Feedback Controls */}

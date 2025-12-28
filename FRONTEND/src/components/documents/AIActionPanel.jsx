@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { MessageSquare, FileText, Lightbulb } from 'lucide-react';
+import { MessageSquare, FileText, Lightbulb, Sparkles } from 'lucide-react';
 import ChatUI from '../chat/ChatUI';
 import SummaryGenerator from '../chat/SummaryGenerator';
+import FlashcardGenerator from './FlashcardGenerator';
 import clsx from 'clsx';
 
 /**
@@ -14,6 +15,7 @@ const AIActionPanel = ({ document }) => {
     const tabs = [
         { id: 'chat', label: 'Chat', icon: MessageSquare },
         { id: 'summary', label: 'Summary', icon: FileText },
+        { id: 'flashcards', label: 'Flashcards', icon: Sparkles },
         { id: 'explain', label: 'Explain', icon: Lightbulb },
     ];
 
@@ -50,9 +52,10 @@ const AIActionPanel = ({ document }) => {
             </div>
 
             {/* Tab Content */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-auto p-4">
                 {activeTab === 'chat' && <ChatUI documentId={document.id} />}
                 {activeTab === 'summary' && <SummaryGenerator document={document} />}
+                {activeTab === 'flashcards' && <FlashcardGenerator document={document} />}
                 {activeTab === 'explain' && (
                     <div className="h-full flex items-center justify-center p-6 text-center">
                         <div>
@@ -61,7 +64,7 @@ const AIActionPanel = ({ document }) => {
                                 Select text in the PDF to get AI explanations
                             </p>
                             <p className="text-slate-400 text-xs mt-2">
-                                Coming soon: Highlight any concept for instant explanations
+                                A floating "Explain" button will appear when you select text
                             </p>
                         </div>
                     </div>

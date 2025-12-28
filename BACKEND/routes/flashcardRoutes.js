@@ -25,6 +25,15 @@ router.post('/generate', protect, async (req, res) => {
             return res.status(400).json({ error: 'Document ID is required' });
         }
 
+        // Validate count
+        const flashcardCount = parseInt(count);
+        if (isNaN(flashcardCount) || flashcardCount < 1 || flashcardCount > 50) {
+            return res.status(400).json({
+                error: 'Count must be a number between 1 and 50',
+                count: flashcardCount
+            });
+        }
+
         // Get document
         const document = await Document.findOne({
             _id: documentId,
@@ -32,20 +41,30 @@ router.post('/generate', protect, async (req, res) => {
         });
 
         if (!document) {
-            return res.status(404).json({ error: 'Document not found' });
+            return res.status(404).json({ error: 'Document not found or access denied' });
+        }
+
+        // Check if document has content
+        if (!document.content || document.content.length < 50) {
+            return res.status(400).json({ error: 'Document content is too short to generate flashcards' });
         }
 
         // Generate flashcards using AI
-        const aiFlashcards = await generateFlashcards(document.content, count);
+        const aiFlashcards = await generateFlashcards(document.content, flashcardCount);
 
-        // Save flashcards to database
+        // Validate AI response
+        if (!Array.isArray(aiFlashcards) || aiFlashcards.length === 0) {
+            throw new Error('AI returned invalid flashcard format');
+        }
+
+        // Save flashcards to database - map front/back to question/answer
         const flashcards = await Flashcard.insertMany(
             aiFlashcards.map(fc => ({
                 userId: req.user.id,
                 documentId: document._id,
-                question: fc.question,
-                answer: fc.answer,
-                topic: fc.topic || 'General',
+                question: fc.front || fc.question,  // Support both formats
+                answer: fc.back || fc.answer,
+                topic: fc.topic || document.title || 'General',
                 difficulty: fc.difficulty || 'medium',
             }))
         );
@@ -67,10 +86,20 @@ router.post('/generate', protect, async (req, res) => {
         res.status(201).json({
             success: true,
             count: flashcards.length,
+            documentTitle: document.title,
             flashcards,
         });
     } catch (error) {
         console.error('Generate flashcards error:', error);
+
+        // Return specific error messages
+        if (error.message.includes('AI')) {
+            return res.status(503).json({
+                error: 'AI service temporarily unavailable. Please try again.',
+                details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
+
         res.status(500).json({ error: 'Failed to generate flashcards' });
     }
 });
@@ -86,7 +115,20 @@ router.get('/', protect, async (req, res) => {
 
         // Build query
         const query = { userId: req.user.id };
-        if (documentId) query.documentId = documentId;
+
+        // Validate and add documentId if provided
+        if (documentId) {
+            // Check if documentId is a valid MongoDB ObjectId
+            const mongoose = require('mongoose');
+            if (!mongoose.Types.ObjectId.isValid(documentId)) {
+                return res.status(400).json({
+                    error: 'Invalid document ID format',
+                    flashcards: []
+                });
+            }
+            query.documentId = documentId;
+        }
+
         if (difficulty) query.difficulty = difficulty;
         if (favorites === 'true') query.isFavorite = true;
 

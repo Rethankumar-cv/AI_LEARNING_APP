@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, ArrowLeft } from 'lucide-react';
-import mockApi from '../services/mockApi';
+import { flashcardsAPI } from '../services/api';
 import Button from '../components/common/Button';
 import EmptyState from '../components/common/EmptyState';
 import { CardSkeleton } from '../components/common/LoadingSkeleton';
@@ -22,20 +22,21 @@ const FlashcardsFavorites = () => {
     const fetchFavorites = async () => {
         try {
             setLoading(true);
-            const cards = await mockApi.getFlashcards();
-            const favoriteCards = cards.filter(card => card.isFavorite);
-            setFavorites(favoriteCards);
+            const response = await flashcardsAPI.getFavorites();
+            setFavorites(response.flashcards || []);
         } catch (error) {
             console.error('Error fetching favorites:', error);
+            setFavorites([]);
         } finally {
             setLoading(false);
         }
     };
 
-    const toggleFavorite = async (id) => {
+    const toggleFavorite = async (cardId) => {
         try {
-            await mockApi.toggleFavorite(id);
-            setFavorites(cards => cards.filter(card => card.id !== id));
+            await flashcardsAPI.toggleFavorite(cardId);
+            // Remove from favorites list
+            setFavorites(cards => cards.filter(card => (card._id || card.id) !== cardId));
         } catch (error) {
             console.error('Error toggling favorite:', error);
         }
@@ -63,13 +64,22 @@ const FlashcardsFavorites = () => {
                 </Button>
 
                 <div className="flex-1">
-                    <h2 className="text-2xl font-display font-bold text-slate-900">
+                    <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white">
                         Favorite Flashcards ⭐
                     </h2>
-                    <p className="text-slate-600">
+                    <p className="text-slate-600 dark:text-slate-400">
                         {favorites.length} card{favorites.length !== 1 ? 's' : ''} marked as favorite
                     </p>
                 </div>
+
+                {favorites.length > 0 && (
+                    <Button
+                        variant="primary"
+                        onClick={() => navigate('/flashcards?favorites=true')}
+                    >
+                        Study Favorites
+                    </Button>
+                )}
             </div>
 
             {/* Favorites Grid */}
@@ -88,7 +98,7 @@ const FlashcardsFavorites = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {favorites.map((card, index) => (
                         <motion.div
-                            key={card.id}
+                            key={card._id || card.id}
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: index * 0.1 }}
@@ -97,7 +107,7 @@ const FlashcardsFavorites = () => {
                             <div className="flex items-start justify-between mb-4">
                                 <h4 className="text-sm font-semibold text-primary-600">QUESTION</h4>
                                 <button
-                                    onClick={() => toggleFavorite(card.id)}
+                                    onClick={() => toggleFavorite(card._id || card.id)}
                                     className="hover:scale-110 transition-transform"
                                 >
                                     <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
