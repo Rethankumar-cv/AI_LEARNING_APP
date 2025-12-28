@@ -141,6 +141,14 @@ export const documentsAPI = {
         const response = await api.delete(`/documents/${id}`);
         return response.data;
     },
+
+    /**
+     * Explain selected text from document
+     */
+    explainText: async (documentId, text) => {
+        const response = await api.post(`/documents/${documentId}/explain`, { text });
+        return response.data;
+    },
 };
 
 // ============================================================

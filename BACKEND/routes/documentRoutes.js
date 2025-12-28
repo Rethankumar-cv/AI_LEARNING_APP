@@ -13,7 +13,7 @@ const Document = require('../models/Document');
 const User = require('../models/User');
 const Activity = require('../models/Activity');
 const { extractTextFromPDF } = require('../utils/pdfExtractor');
-const { generateSummary, chatWithDocument } = require('../services/geminiService');
+const { generateSummary, chatWithDocument, explainText } = require('../services/geminiService');
 
 // Configure multer for file upload
 const storage = multer.diskStorage({
@@ -75,25 +75,29 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
         let summary = '';
 
         try {
-            console.log('🤖 Processing document with Gemini...');
+            console.log('🤖 Processing document with AI...');
 
             if (fileType === 'pdf') {
-                // For PDF, we pass the file directly to Gemini as inline data
-                // We don't extract text locally anymore since pdf-parse is failing
-                const fileBuffer = fs.readFileSync(filePath);
-                const base64Data = fileBuffer.toString('base64');
+                // Extract text from PDF using pdf-parse
+                try {
+                    content = await extractTextFromPDF(filePath);
+                    console.log(`📄 Extracted ${content.length} characters from PDF`);
 
-                const inlineData = {
-                    inlineData: {
-                        data: base64Data,
-                        mimeType: 'application/pdf',
-                    },
-                };
-
-                // Generate summary from PDF directly
-                summary = await generateSummary(inlineData);
-                content = 'Content available in PDF viewer'; // Placeholder for content field
-                console.log('✅ PDF processed successfully by Gemini');
+                    // Generate summary from extracted text
+                    summary = await generateSummary(content.substring(0, 30000));
+                    console.log('✅ PDF processed successfully');
+                } catch (pdfError) {
+                    console.error('PDF extraction failed:', pdfError);
+                    content = 'PDF text extraction failed. Content available in PDF viewer.';
+                    summary = {
+                        title: 'Summary Not Available',
+                        sections: [{
+                            heading: 'Error',
+                            points: ['Unable to extract text from PDF for AI processing']
+                        }],
+                        keywords: []
+                    };
+                }
             } else {
                 // For text files, read content and summarize
                 content = fs.readFileSync(filePath, 'utf-8');
@@ -306,30 +310,10 @@ router.post('/:id/chat', protect, async (req, res) => {
             return res.status(404).json({ error: 'Document not found' });
         }
 
-        let context;
+        // Use the content stored in the database
+        const context = document.content;
 
-        // If it's a PDF and content is a placeholder, use the actual file
-        if (document.fileType === 'pdf' && document.fileUrl) {
-            const filePath = path.join(__dirname, '..', document.fileUrl);
-            if (fs.existsSync(filePath)) {
-                // Read and encode PDF for Gemini
-                const fileBuffer = fs.readFileSync(filePath);
-                const base64Data = fileBuffer.toString('base64');
-                context = {
-                    inlineData: {
-                        data: base64Data,
-                        mimeType: 'application/pdf',
-                    },
-                };
-            } else {
-                console.warn(`PDF file missing at ${filePath}, using database content fallback`);
-                context = document.content;
-            }
-        } else {
-            context = document.content;
-        }
-
-        if (!context || (typeof context === 'string' && context.length < 10)) {
+        if (!context || context.length < 10) {
             return res.status(400).json({ error: 'Document content is empty or unavailable for chat' });
         }
 
@@ -344,6 +328,53 @@ router.post('/:id/chat', protect, async (req, res) => {
         console.error("Chat route error:", error.message);
 
         // Return 503 Service Unavailable as requested
+        res.status(503).json({
+            success: false,
+            message: "AI service unavailable. Please try again.",
+            details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
+/**
+ * @route   POST /api/documents/:id/explain
+ * @desc    Explain selected text from a document
+ * @access  Private
+ */
+router.post('/:id/explain', protect, async (req, res) => {
+    try {
+        const { text } = req.body;
+
+        if (!text || text.trim().length === 0) {
+            return res.status(400).json({ error: 'Text to explain is required' });
+        }
+
+        // Optionally get document for context
+        let documentContext = '';
+        try {
+            const document = await Document.findOne({
+                _id: req.params.id,
+                userId: req.user.id,
+            });
+
+            if (document && document.content) {
+                documentContext = document.content;
+            }
+        } catch (err) {
+            // Continue without context if document not found
+            console.log('Document context not available for explanation');
+        }
+
+        // Get AI explanation
+        const explanation = await explainText(text, documentContext);
+
+        res.json({
+            success: true,
+            explanation,
+        });
+    } catch (error) {
+        console.error("Explain route error:", error.message);
+
         res.status(503).json({
             success: false,
             message: "AI service unavailable. Please try again.",

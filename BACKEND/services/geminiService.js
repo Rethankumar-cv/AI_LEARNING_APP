@@ -1,149 +1,269 @@
-
 /**
- * Gemini AI Service
+ * AI Service (Groq)
+ * Provides AI-powered features using Groq API
  */
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Groq = require("groq-sdk");
 
-if (!process.env.GEMINI_API_KEY) {
-    throw new Error("❌ GEMINI_API_KEY is missing in environment variables");
+if (!process.env.GROQ_API_KEY) {
+    throw new Error("❌ GROQ_API_KEY is missing in environment variables");
 }
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY
+});
 
-const MODEL_NAME = "gemini-1.5-flash";
+const MODEL_NAME = "llama-3.3-70b-versatile";
 
 /* -------------------- SUMMARY -------------------- */
 async function generateSummary(documentText) {
     try {
-        const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+        // Handle both text string and inline data object (for backward compatibility)
+        let textContent = "";
 
-        const prompt = `
-You are an expert at summarizing educational content.
+        if (typeof documentText === 'string') {
+            textContent = documentText;
+        } else if (documentText && documentText.inlineData) {
+            // PDF was passed as inline data, but Groq doesn't support this
+            throw new Error("PDF inline data not supported. Please extract text first.");
+        } else {
+            throw new Error("Invalid document input");
+        }
 
-Return ONLY valid JSON (no markdown).
+        // Use more content for comprehensive summaries (up to 100k characters)
+        const contentToAnalyze = textContent.slice(0, 100000);
+        const documentLength = textContent.length;
 
-Format:
+        const prompt = `You are an expert document analyst. Create a comprehensive, well-structured summary of the entire document provided below.
+
+DOCUMENT (${documentLength} characters total):
+${contentToAnalyze}
+
+${documentLength > 100000 ? '\n[Note: Document is very long. Focus on capturing all major themes, concepts, and key information from the entire text.]' : ''}
+
+REQUIREMENTS:
+1. Read and analyze the ENTIRE document carefully
+2. Create a clear, hierarchical summary that covers ALL major topics
+3. Organize information logically with clear section headings
+4. Include 6-10 main sections (depending on document complexity)
+5. Each section should have 5-8 detailed key points
+6. Capture important facts, concepts, definitions, and examples
+7. Use clear, concise language
+8. Ensure NO important information is missed
+
+Return ONLY a valid JSON object with this EXACT structure:
 {
-  "title": "Document Title",
+  "title": "Clear, descriptive document title (max 10 words)",
   "sections": [
     {
-      "heading": "Section Heading",
-      "points": ["point 1", "point 2"]
+      "heading": "Main Topic/Section Name",
+      "points": [
+        "Detailed key point 1 with context",
+        "Detailed key point 2 with context",
+        "Detailed key point 3 with context",
+        "Detailed key point 4 with context",
+        "Detailed key point 5 with context"
+      ]
     }
   ],
-  "keywords": ["keyword1", "keyword2"]
+  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6", "keyword7", "keyword8", "keyword9", "keyword10"]
 }
 
-Document:
-${documentText.slice(0, 30000)}
-`;
+CRITICAL: Return ONLY the JSON object, no markdown formatting, no explanations, no other text.`;
 
-        const result = await model.generateContent(prompt);
-        const text = result.response.text().trim();
+        const completion = await groq.chat.completions.create({
+            model: MODEL_NAME,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.2,  // Lower for more factual, structured output
+            max_tokens: 5000    // Increased for comprehensive summaries
+        });
 
-        return JSON.parse(text.replace(/```json|```/g, ""));
+        let responseText = completion.choices[0].message.content.trim();
+
+        // Clean JSON response
+        responseText = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+
+        const summary = JSON.parse(responseText);
+        return summary;
+
     } catch (error) {
-        console.error("Gemini summary error:", error);
-        throw new Error("Failed to generate document summary");
+        console.error("Groq summary error:", error);
+
+        // Return fallback structure
+        return {
+            title: "Summary Generation Failed",
+            sections: [{
+                heading: "Error",
+                points: [`Failed to generate summary: ${error.message}`]
+            }],
+            keywords: ["error"]
+        };
     }
 }
 
 /* -------------------- FLASHCARDS -------------------- */
 async function generateFlashcards(documentText, count = 10) {
     try {
-        const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+        const prompt = `Generate ${count} flashcards from this document:
 
-        const prompt = `
-Create exactly ${count} flashcards from this document.
+${documentText.slice(0, 15000)}
 
-Return ONLY JSON array:
+Return ONLY a valid JSON array:
 [
   {
-    "question": "Question?",
-    "answer": "Answer",
-    "topic": "Topic",
-    "difficulty": "easy|medium|hard"
+    "front": "Question or term",
+    "back": "Answer or definition"
   }
 ]
 
-Document:
-${documentText.slice(0, 15000)}
-`;
+Generate exactly ${count} flashcards. Return ONLY the JSON array, no other text.`;
 
-        const result = await model.generateContent(prompt);
-        const text = result.response.text().trim();
+        const completion = await groq.chat.completions.create({
+            model: MODEL_NAME,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.5,
+            max_tokens: 3000
+        });
 
-        return JSON.parse(text.replace(/```json|```/g, "")).slice(0, count);
+        let responseText = completion.choices[0].message.content.trim();
+        responseText = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+
+        return JSON.parse(responseText);
+
     } catch (error) {
-        console.error("Gemini flashcards error:", error);
-        throw new Error("Failed to generate flashcards");
+        console.error("Groq flashcards error:", error);
+        throw new Error("Failed to generate flashcards: " + error.message);
     }
 }
 
 /* -------------------- QUIZ -------------------- */
-async function generateQuiz(documentText, questionCount = 10) {
+async function generateQuiz(documentText, questionCount = 5) {
     try {
-        const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+        const prompt = `Generate a ${questionCount}-question multiple choice quiz from this document:
 
-        const prompt = `
-Create ${questionCount} MCQs.
+${documentText.slice(0, 15000)}
 
-Return ONLY JSON array:
+Return ONLY a valid JSON array:
 [
   {
-    "id": "q1",
-    "question": "Question?",
-    "options": ["A","B","C","D"],
-    "correctAnswer": 0,
-    "explanation": "Why"
+    "question": "Question text?",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctAnswer": 0
   }
 ]
 
-Document:
-${documentText.slice(0, 20000)}
-`;
+Rules:
+- correctAnswer is the index (0-3) of the correct option
+- Generate exactly ${questionCount} questions
+- Return ONLY the JSON array, no other text`;
 
-        const result = await model.generateContent(prompt);
-        const text = result.response.text().trim();
+        const completion = await groq.chat.completions.create({
+            model: MODEL_NAME,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.5,
+            max_tokens: 3000
+        });
 
-        return JSON.parse(text.replace(/```json|```/g, ""));
+        let responseText = completion.choices[0].message.content.trim();
+        responseText = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+
+        return JSON.parse(responseText);
+
     } catch (error) {
-        console.error("Gemini quiz error:", error);
-        throw new Error("Failed to generate quiz");
+        console.error("Groq quiz error:", error);
+        throw new Error("Failed to generate quiz: " + error.message);
     }
 }
 
 /* -------------------- CHAT -------------------- */
 async function chatWithDocument(question, documentContext) {
     try {
-        const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+        let contextText = "";
 
-        const prompt = `
-Answer ONLY using the context.
-
-Question:
-${question}
-`;
-
-        // Handle both text string and inline data part (PDF)
-        const parts = [prompt];
-
-        // Check if context is a string (text file content) or object (inline PDF data)
+        // Handle both string and object contexts
         if (typeof documentContext === 'string') {
-            parts.push(`Context:\n${documentContext.slice(0, 10000)}`);
+            contextText = documentContext;
         } else if (documentContext && documentContext.inlineData) {
-            // Pass the inline data object directly
-            parts.push(documentContext);
+            throw new Error("PDF inline data not supported. Please use extracted text.");
         } else {
             throw new Error('Invalid document context provided');
         }
 
-        const result = await model.generateContent(parts);
-        return result.response.text();
+        if (!contextText || contextText.length < 10) {
+            throw new Error('Document content is empty or unavailable for chat');
+        }
+
+        const prompt = `You are a helpful assistant. Answer the question based ONLY on the provided context.
+
+Context:
+${contextText.slice(0, 10000)}
+
+Question: ${question}
+
+Answer:`;
+
+        const completion = await groq.chat.completions.create({
+            model: MODEL_NAME,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7,
+            max_tokens: 1000
+        });
+
+        return completion.choices[0].message.content.trim();
+
     } catch (error) {
-        console.error("Gemini chat error:", error);
+        console.error("Groq chat error:", error);
         throw new Error("Failed to generate chat response: " + error.message);
+    }
+}
+
+/* -------------------- EXPLAIN TEXT -------------------- */
+async function explainText(selectedText, documentContext = '') {
+    try {
+        if (!selectedText || selectedText.trim().length === 0) {
+            throw new Error('No text provided to explain');
+        }
+
+        // Limit selected text to reasonable length
+        const textToExplain = selectedText.slice(0, 2000);
+
+        let prompt = `You are an expert educator. Provide a clear, comprehensive explanation of the following text.
+
+TEXT TO EXPLAIN:
+"${textToExplain}"
+`;
+
+        // Add document context if available
+        if (documentContext && documentContext.length > 100) {
+            prompt += `\nDOCUMENT CONTEXT (for reference):
+${documentContext.slice(0, 5000)}
+
+`;
+        }
+
+        prompt += `
+EXPLANATION REQUIREMENTS:
+1. Explain the meaning and significance of the text
+2. Break down complex concepts into simple terms
+3. Provide relevant examples or analogies if helpful
+4. Explain any technical terms or jargon
+5. Add context about why this is important
+6. Keep the explanation clear and educational
+
+Provide a detailed but concise explanation (2-4 paragraphs):`;
+
+        const completion = await groq.chat.completions.create({
+            model: MODEL_NAME,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.5,
+            max_tokens: 1000
+        });
+
+        return completion.choices[0].message.content.trim();
+
+    } catch (error) {
+        console.error("Groq explain error:", error);
+        throw new Error("Failed to generate explanation: " + error.message);
     }
 }
 
@@ -152,4 +272,5 @@ module.exports = {
     generateFlashcards,
     generateQuiz,
     chatWithDocument,
+    explainText,
 };
