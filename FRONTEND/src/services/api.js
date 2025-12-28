@@ -121,8 +121,8 @@ export const documentsAPI = {
     /**
      * Get all user documents
      */
-    getAll: async () => {
-        const response = await api.get('/documents');
+    getAll: async (queryString = '') => {
+        const response = await api.get(`/documents${queryString}`);
         return response.data;
     },
 

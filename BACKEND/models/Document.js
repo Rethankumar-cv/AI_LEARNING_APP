@@ -53,6 +53,9 @@ const documentSchema = new mongoose.Schema({
 // Index for faster user document lookups
 documentSchema.index({ userId: 1, createdAt: -1 });
 
+// Text search index for search functionality
+documentSchema.index({ title: 'text', content: 'text' });
+
 const Document = mongoose.model('Document', documentSchema);
 
 module.exports = Document;

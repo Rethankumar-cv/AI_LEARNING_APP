@@ -25,11 +25,11 @@ export const DocumentProvider = ({ children }) => {
         }
     }, [isAuthenticated]);
 
-    const fetchDocuments = async () => {
+    const fetchDocuments = async (queryString = '') => {
         try {
             setLoading(true);
             setError(null);
-            const response = await documentsAPI.getAll();
+            const response = await documentsAPI.getAll(queryString);
             setDocuments(response.documents || []);
         } catch (err) {
             const errorMessage = err.response?.data?.error || 'Failed to fetch documents';

@@ -1,12 +1,34 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import UploadZone from '../components/documents/UploadZone';
 import DocumentList from '../components/documents/DocumentList';
+import DocumentSearch from '../components/documents/DocumentSearch';
+import { useDocuments } from '../context/DocumentContext';
 
 /**
  * Documents Page
  */
 const Documents = () => {
+    const { fetchDocuments } = useDocuments();
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterType, setFilterType] = useState('');
+    const [sortOrder, setSortOrder] = useState('newest');
+
+    // Debounced search effect
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            const params = new URLSearchParams();
+            if (searchTerm) params.append('search', searchTerm);
+            if (filterType) params.append('type', filterType);
+            if (sortOrder) params.append('sort', sortOrder);
+
+            const queryString = params.toString() ? `?${params.toString()}` : '';
+            fetchDocuments(queryString);
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [searchTerm, filterType, sortOrder]);
+
     return (
         <div className="space-y-8">
             {/* Page Header */}
@@ -32,9 +54,21 @@ const Documents = () => {
 
             {/* Document List */}
             <div>
-                <h3 className="text-xl font-display font-bold text-slate-900 mb-4">
-                    Your Documents
-                </h3>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                    <h3 className="text-xl font-display font-bold text-slate-900 dark:text-white">
+                        Your Documents
+                    </h3>
+                </div>
+
+                <DocumentSearch
+                    searchTerm={searchTerm}
+                    onSearch={setSearchTerm}
+                    filterType={filterType}
+                    onFilter={setFilterType}
+                    sortOrder={sortOrder}
+                    onSort={setSortOrder}
+                />
+
                 <DocumentList />
             </div>
         </div>

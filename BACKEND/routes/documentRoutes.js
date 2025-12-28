@@ -189,9 +189,40 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
  */
 router.get('/', protect, async (req, res) => {
     try {
-        const docs = await Document.find({ userId: req.user.id })
+        const { search, sort, type } = req.query;
+
+        // Build query
+        let query = { userId: req.user.id };
+
+        // Text search
+        if (search) {
+            query.$text = { $search: search };
+        }
+
+        // Filter by file type
+        if (type && ['pdf', 'txt'].includes(type)) {
+            query.fileType = type;
+        }
+
+        // Determine sort order
+        let sortOptions = { createdAt: -1 }; // Default: Newest
+
+        if (sort === 'oldest') {
+            sortOptions = { createdAt: 1 };
+        } else if (sort === 'name') {
+            sortOptions = { title: 1 };
+        } else if (sort === 'size') {
+            sortOptions = { fileSize: -1 };
+        } else if (search && !sort) {
+            // If searching and no specific sort, sort by relevance could be added here
+            // but sticking to default newest for consistency unless requested
+            sortOptions = { createdAt: -1 };
+            // Ideally for search: { score: { $meta: "textScore" } } but requires projection
+        }
+
+        const docs = await Document.find(query)
             .select('-content') // Exclude large content field
-            .sort({ createdAt: -1 });
+            .sort(sortOptions);
 
         // Map documents to match frontend expectations
         const documents = docs.map(doc => ({
