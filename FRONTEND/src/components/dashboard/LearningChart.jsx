@@ -8,8 +8,8 @@ import { TrendingUp } from 'lucide-react';
  */
 const LearningChart = ({ data }) => {
     // Find highest data point for insight
-    const maxHours = Math.max(...(data?.map(d => d.hours) || [0]));
-    const maxDay = data?.find(d => d.hours === maxHours)?.day || '';
+    const maxActivities = Math.max(...(data?.map(d => d.value) || [0]));
+    const maxDay = data?.find(d => d.value === maxActivities)?.day || '';
 
     const CustomTooltip = ({ active, payload }) => {
         if (active && payload && payload.length) {
@@ -23,10 +23,10 @@ const LearningChart = ({ data }) => {
                         {payload[0].payload.day}
                     </p>
                     <p className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                        {payload[0].value} hours
+                        {payload[0].value} {payload[0].value === 1 ? 'activity' : 'activities'}
                     </p>
                     <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                        Study time
+                        Study activities
                     </p>
                 </motion.div>
             );
@@ -89,7 +89,7 @@ const LearningChart = ({ data }) => {
                         <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5 5' }} />
                         <Area
                             type="monotone"
-                            dataKey="hours"
+                            dataKey="value"
                             stroke="url(#strokeGradient)"
                             strokeWidth={3}
                             fill="url(#colorHours)"
