@@ -78,6 +78,7 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
         // Initialize content and summary
         let content = '';
         let summary = '';
+        let tempFilePath = null; // Track temp file for cleanup
 
         try {
             console.log('🤖 Processing document with AI...');
@@ -85,7 +86,36 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
             if (fileType === 'pdf') {
                 // Extract text from PDF using pdf-parse
                 try {
-                    content = await extractTextFromPDF(filePath);
+                    // Check if file is on Cloudinary or local
+                    const isCloudinary = filePath.includes('cloudinary.com');
+                    let extractionPath = filePath;
+
+                    if (isCloudinary) {
+                        // Download PDF from Cloudinary to temp file for text extraction
+                        console.log('☁️  Downloading PDF from Cloudinary for text extraction...');
+
+                        const tempDir = path.join(__dirname, '../temp');
+                        if (!fs.existsSync(tempDir)) {
+                            fs.mkdirSync(tempDir, { recursive: true });
+                        }
+
+                        tempFilePath = path.join(tempDir, `temp-${Date.now()}.pdf`);
+
+                        // Download file from Cloudinary
+                        const response = await axios.get(filePath, { responseType: 'stream' });
+                        const writer = fs.createWriteStream(tempFilePath);
+                        response.data.pipe(writer);
+
+                        await new Promise((resolve, reject) => {
+                            writer.on('finish', resolve);
+                            writer.on('error', reject);
+                        });
+
+                        extractionPath = tempFilePath;
+                        console.log('✅ PDF downloaded to temp location');
+                    }
+
+                    content = await extractTextFromPDF(extractionPath);
                     console.log(`📄 Extracted ${content.length} characters from PDF`);
 
                     // Generate summary from extracted text
@@ -102,6 +132,16 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
                         }],
                         keywords: []
                     };
+                } finally {
+                    // Clean up temp file if it was created
+                    if (tempFilePath && fs.existsSync(tempFilePath)) {
+                        try {
+                            fs.unlinkSync(tempFilePath);
+                            console.log('🗑️  Cleaned up temp file');
+                        } catch (cleanupError) {
+                            console.error('⚠️  Failed to cleanup temp file:', cleanupError.message);
+                        }
+                    }
                 }
             } else {
                 // For text files, read content and summarize
@@ -283,10 +323,10 @@ router.get('/:id', protect, async (req, res) => {
                 content: document.content,
                 fileType: document.fileType,
                 fileUrl: document.fileUrl,
-                // Full URL for PDF viewer - use Cloudinary URL if available, else local
+                // Full URL for PDF viewer - use backend proxy for Cloudinary, local URL otherwise
                 url: document.fileUrl.includes('cloudinary.com')
-                    ? document.fileUrl
-                    : `http://localhost:5000${document.fileUrl}`,
+                    ? `${process.env.BACKEND_URL || 'http://localhost:5000'}/api/documents/${document._id}/pdf`
+                    : `${process.env.BACKEND_URL || 'http://localhost:5000'}${document.fileUrl}`,
                 fileSize: document.fileSize,
                 size: document.fileSize,
                 uploadedAt: document.uploadedAt || document.createdAt,
@@ -295,6 +335,104 @@ router.get('/:id', protect, async (req, res) => {
     } catch (error) {
         console.error('Get document error:', error);
         res.status(500).json({ error: 'Failed to get document' });
+    }
+});
+
+/**
+ * @route   GET /api/documents/:id/pdf
+ * @desc    Stream PDF file (proxy for Cloudinary or serve local file)
+ * @access  Private
+ */
+router.get('/:id/pdf', protect, async (req, res) => {
+    try {
+        const document = await Document.findOne({
+            _id: req.params.id,
+            userId: req.user.id,
+        });
+
+        if (!document) {
+            return res.status(404).json({ error: 'Document not found' });
+        }
+
+        // Check if file is on Cloudinary
+        if (document.fileUrl.includes('cloudinary.com')) {
+            // Stream from Cloudinary
+            try {
+                console.log('📄 Streaming PDF from Cloudinary:', document.fileUrl);
+
+                // Try direct URL first (for public files)
+                const fetchUrl = document.fileUrl;
+
+                /* DISABLED - Testing with direct URLs for public files
+                // Generate signed URL for private files
+                let fetchUrl = document.fileUrl;
+                const urlParts = document.fileUrl.split('/');
+                const uploadIndex = urlParts.indexOf('upload');
+
+                if (uploadIndex !== -1) {
+                    // Extract path after 'upload' and optional version
+                    let pathAfterUpload = urlParts.slice(uploadIndex + 1).join('/');
+                    if (pathAfterUpload.startsWith('v')) {
+                        pathAfterUpload = urlParts.slice(uploadIndex + 2).join('/');
+                    }
+
+                    // Remove file extension to get public_id
+                    const publicId = pathAfterUpload.replace(/\.[^/.]+$/, '');
+
+                    // Generate signed URL
+                    fetchUrl = cloudinary.url(publicId, {
+                        resource_type: 'raw',
+                        sign_url: true,
+                        type: 'upload',
+                    });
+
+                    console.log('🔐 Using signed URL for authentication');
+                }
+                */
+
+                const response = await axios.get(fetchUrl, {
+                    responseType: 'stream',
+                });
+
+                console.log('✅ Cloudinary response received, status:', response.status);
+
+                // Set appropriate headers
+                res.set({
+                    'Content-Type': 'application/pdf',
+                    'Content-Disposition': `inline; filename="${document.title}.pdf"`,
+                    'Cache-Control': 'public, max-age=31536000',
+                });
+
+                // Pipe the Cloudinary stream to response
+                response.data.pipe(res);
+            } catch (cloudinaryError) {
+                console.error('❌ Error streaming from Cloudinary:', {
+                    message: cloudinaryError.message,
+                    status: cloudinaryError.response?.status,
+                    statusText: cloudinaryError.response?.statusText,
+                    url: document.fileUrl
+                });
+                return res.status(500).json({ error: 'Failed to load PDF from cloud storage' });
+            }
+        } else {
+            // Serve local file
+            const filePath = path.join(__dirname, '..', document.fileUrl);
+
+            if (!fs.existsSync(filePath)) {
+                return res.status(404).json({ error: 'PDF file not found' });
+            }
+
+            res.set({
+                'Content-Type': 'application/pdf',
+                'Content-Disposition': `inline; filename="${document.title}.pdf"`,
+            });
+
+            const fileStream = fs.createReadStream(filePath);
+            fileStream.pipe(res);
+        }
+    } catch (error) {
+        console.error('PDF streaming error:', error);
+        res.status(500).json({ error: 'Failed to stream PDF' });
     }
 });
 

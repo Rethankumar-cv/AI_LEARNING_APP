@@ -27,6 +27,7 @@ const storage = new CloudinaryStorage({
         folder: 'ai-learning-documents',
         allowed_formats: ['pdf', 'txt'],
         resource_type: 'raw', // For non-image files (PDF, TXT)
+        access_mode: 'public', // Make files publicly accessible
         public_id: (req, file) => {
             // Generate unique filename
             const timestamp = Date.now();

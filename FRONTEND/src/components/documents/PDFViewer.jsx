@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { ZoomIn, ZoomOut, ChevronLeft, ChevronRight, Loader } from 'lucide-react';
 import Button from '../common/Button';
@@ -49,6 +49,32 @@ const PDFViewer = ({ document }) => {
     // Get the PDF URL from the document
     // Backend now provides 'url' field with full path
     const pdfUrl = document?.url || document?.fileUrl;
+
+    // Get auth token for PDF request
+    const getAuthToken = () => {
+        let token = localStorage.getItem('token');
+        if (token) {
+            try {
+                // If token is JSON-stringified, parse it
+                if (token.startsWith('"') && token.endsWith('"')) {
+                    token = JSON.parse(token);
+                }
+            } catch (e) {
+                console.warn('Failed to parse token:', e);
+            }
+        }
+        return token;
+    };
+
+    // Configure PDF options with authentication (memoized to prevent unnecessary reloads)
+    const pdfOptions = useMemo(() => {
+        const token = getAuthToken();
+        return {
+            httpHeaders: {
+                Authorization: `Bearer ${token}`,
+            },
+        };
+    }, []); // Empty dependency array since token doesn't change during component lifecycle
 
     if (!pdfUrl) {
         return (
@@ -126,6 +152,7 @@ const PDFViewer = ({ document }) => {
                     <div className="shadow-2xl">
                         <Document
                             file={pdfUrl}
+                            options={pdfOptions}
                             onLoadSuccess={onDocumentLoadSuccess}
                             onLoadError={onDocumentLoadError}
                             loading={
