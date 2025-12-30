@@ -8,15 +8,20 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 const { protect } = require('../middleware/auth');
 const Document = require('../models/Document');
 const User = require('../models/User');
 const Activity = require('../models/Activity');
 const { extractTextFromPDF } = require('../utils/pdfExtractor');
 const { generateSummary, chatWithDocument, explainText } = require('../services/geminiService');
+const { cloudinary, storage: cloudinaryStorage, verifyCloudinaryConfig } = require('../config/cloudinary');
 
-// Configure multer for file upload
-const storage = multer.diskStorage({
+// Check if Cloudinary is configured
+const isCloudinaryEnabled = verifyCloudinaryConfig();
+
+// Configure multer with Cloudinary or local storage
+const localStorage = multer.diskStorage({
     destination: (req, file, cb) => {
         const uploadDir = path.join(__dirname, '../uploads');
         if (!fs.existsSync(uploadDir)) {
@@ -40,7 +45,7 @@ const fileFilter = (req, file, cb) => {
 };
 
 const upload = multer({
-    storage,
+    storage: isCloudinaryEnabled ? cloudinaryStorage : localStorage,
     fileFilter,
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
 });
@@ -127,7 +132,7 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
             content,
             summary,
             fileType,
-            fileUrl: `/uploads/${req.file.filename}`,
+            fileUrl: isCloudinaryEnabled ? req.file.path : `/uploads/${req.file.filename}`,
             fileSize: req.file.size,
             status: 'completed',
             processedAt: Date.now(),
@@ -174,9 +179,13 @@ router.post('/upload', protect, upload.single('file'), async (req, res) => {
     } catch (error) {
         console.error('❌ Document upload error:', error.message);
         console.error('Stack:', error.stack);
-        // Clean up uploaded file on error
-        if (req.file) {
-            fs.unlinkSync(req.file.path);
+        // Clean up uploaded file on error (only for local storage)
+        if (req.file && !isCloudinaryEnabled) {
+            try {
+                fs.unlinkSync(req.file.path);
+            } catch (cleanupError) {
+                console.error('⚠️  Failed to cleanup file:', cleanupError.message);
+            }
         }
         res.status(500).json({ error: 'Failed to upload document' });
     }
@@ -274,7 +283,10 @@ router.get('/:id', protect, async (req, res) => {
                 content: document.content,
                 fileType: document.fileType,
                 fileUrl: document.fileUrl,
-                url: `http://localhost:5000${document.fileUrl}`, // Full URL for PDF viewer
+                // Full URL for PDF viewer - use Cloudinary URL if available, else local
+                url: document.fileUrl.includes('cloudinary.com')
+                    ? document.fileUrl
+                    : `http://localhost:5000${document.fileUrl}`,
                 fileSize: document.fileSize,
                 size: document.fileSize,
                 uploadedAt: document.uploadedAt || document.createdAt,
@@ -302,11 +314,28 @@ router.delete('/:id', protect, async (req, res) => {
             return res.status(404).json({ error: 'Document not found' });
         }
 
-        // Delete file from filesystem
+        // Delete file from storage (Cloudinary or local)
         if (document.fileUrl) {
-            const filePath = path.join(__dirname, '..', document.fileUrl);
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
+            // Check if file is stored on Cloudinary
+            if (document.fileUrl.includes('cloudinary.com')) {
+                try {
+                    // Extract public_id from Cloudinary URL
+                    const urlParts = document.fileUrl.split('/');
+                    const fileWithExt = urlParts[urlParts.length - 1];
+                    const publicId = `ai-learning-documents/${fileWithExt}`;
+
+                    await cloudinary.uploader.destroy(publicId, { resource_type: 'raw' });
+                    console.log('✅ Deleted file from Cloudinary:', publicId);
+                } catch (cloudError) {
+                    console.error('⚠️  Failed to delete from Cloudinary:', cloudError.message);
+                }
+            } else {
+                // Delete local file
+                const filePath = path.join(__dirname, '..', document.fileUrl);
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                    console.log('✅ Deleted local file:', filePath);
+                }
             }
         }
 

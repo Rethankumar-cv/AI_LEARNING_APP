@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { User, LogOut, Moon, Sun } from 'lucide-react';
@@ -11,6 +12,7 @@ import { getInitials } from '../../utils/helpers';
 const TopHeader = ({ title }) => {
     const { user, logout } = useAuth();
     const { toggleTheme, isDark } = useTheme();
+    const navigate = useNavigate();
     const [showDropdown, setShowDropdown] = useState(false);
 
     return (
@@ -18,7 +20,7 @@ const TopHeader = ({ title }) => {
             <div className="flex items-center justify-between">
                 {/* Page Title */}
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-display font-bold text-slate-900">
+                    <h1 className="text-2xl md:text-3xl font-display font-bold text-slate-900 dark:text-slate-100">
                         {title}
                     </h1>
                 </div>
@@ -35,10 +37,10 @@ const TopHeader = ({ title }) => {
                         </div>
 
                         <div className="hidden md:block text-left">
-                            <p className="text-sm font-semibold text-slate-900">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                                 {user?.name || 'Demo User'}
                             </p>
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
                                 {user?.email || 'demo@example.com'}
                             </p>
                         </div>
@@ -60,19 +62,20 @@ const TopHeader = ({ title }) => {
                                     animate={{ opacity: 1, scale: 1, y: 0 }}
                                     exit={{ opacity: 0, scale: 0.95, y: -10 }}
                                     transition={{ duration: 0.15 }}
-                                    className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-20"
+                                    className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-purple-500/30 py-2 z-20"
                                 >
-                                    <div className="px-4 py-3 border-b border-slate-200">
-                                        <p className="text-sm font-semibold text-slate-900">
+                                    <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+                                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                                             {user?.name || 'Demo User'}
                                         </p>
-                                        <p className="text-xs text-slate-500">
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">
                                             {user?.email || 'demo@example.com'}
                                         </p>
                                     </div>
 
                                     <button
-                                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                        onClick={() => { navigate('/profile'); setShowDropdown(false); }}
+                                        className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                                     >
                                         <User className="w-4 h-4" />
                                         <span>Profile</span>
@@ -86,13 +89,13 @@ const TopHeader = ({ title }) => {
                                         <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
                                     </button>
 
-                                    <div className="border-t border-slate-200 mt-2 pt-2">
+                                    <div className="border-t border-slate-200 dark:border-slate-700 mt-2 pt-2">
                                         <button
                                             onClick={() => {
                                                 logout();
                                                 setShowDropdown(false);
                                             }}
-                                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                                         >
                                             <LogOut className="w-4 h-4" />
                                             <span>Logout</span>
